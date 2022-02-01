@@ -18,3 +18,7 @@ add_executable(DebuggerBootstrap main.c)
 add_dependencies(DebuggerBootstrap json-c-project)
 target_link_libraries(DebuggerBootstrap ${json-c_BUILD_DIR}/libjson-c.a)
 
+find_package(OpenSSL REQUIRED)
+target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
+
+add_executable(FileSystemWatcher filesystemwatcher.c)
