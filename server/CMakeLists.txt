@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(DebuggerBootstrap)
 
+set (CMAKE_C_STANDARD 11)
 include(ExternalProject)
 
 set(json-c_BUILD_DIR ${CMAKE_BINARY_DIR}/json-c-build) 
