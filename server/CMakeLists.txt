@@ -3,11 +3,27 @@ cmake_minimum_required(VERSION 3.10)
 project(DebuggerBootstrap)
 
 set (CMAKE_C_STANDARD 11)
+
+set(DebuggerBootstrap_Headers 
+	DynamicStringArray.h
+)
+
+set(DebuggerBootstrap_Sources
+	main.c
+	DynamicStringArray.c
+)
+
+add_executable(DebuggerBootstrap ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
+
+find_package(OpenSSL REQUIRED)
+target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
+
+#Add the external json library
 include(ExternalProject)
 
 set(json-c_BUILD_DIR ${CMAKE_BINARY_DIR}/json-c-build) 
 
-ExternalProject_Add(json-c-project
+ExternalProject_Add(json-c
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/json-c
 	BINARY_DIR ${json-c_BUILD_DIR}
 	DOWNLOAD_COMMAND ""
@@ -15,11 +31,8 @@ ExternalProject_Add(json-c-project
 	INSTALL_COMMAND ""
 )	
 
-add_executable(DebuggerBootstrap main.c)
-add_dependencies(DebuggerBootstrap json-c-project)
+add_dependencies(DebuggerBootstrap json-c)
 target_link_libraries(DebuggerBootstrap ${json-c_BUILD_DIR}/libjson-c.a)
 
-find_package(OpenSSL REQUIRED)
-target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
-
+#A sandbox program for trying out filesystem watching
 add_executable(FileSystemWatcher filesystemwatcher.c)
