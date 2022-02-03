@@ -37,5 +37,8 @@ ExternalProject_Add(json-c
 add_dependencies(DebuggerBootstrap json-c)
 target_link_libraries(DebuggerBootstrap ${json-c_BUILD_DIR}/libjson-c.a)
 
+add_subdirectory(test)
+
 #A sandbox program for trying out filesystem watching
 add_executable(FileSystemWatcher filesystemwatcher.c)
+
