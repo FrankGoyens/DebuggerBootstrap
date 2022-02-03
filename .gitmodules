@@ -4,3 +4,6 @@
 [submodule "server/json-c"]
 	path = server/json-c
 	url = https://github.com/json-c/json-c.git
+[submodule "server_dependencies/json-c"]
+	path = server_dependencies/json-c
+	url = https://github.com/json-c/json-c.git
