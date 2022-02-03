@@ -2,7 +2,7 @@
 
 #include "DynamicStringArray.h"
 
-struct ProjectDescription{
+struct ProjectDescription {
     char* executable_name;
     struct DynamicStringArray link_dependencies_for_executable;
 };
