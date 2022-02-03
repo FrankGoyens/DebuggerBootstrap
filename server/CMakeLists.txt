@@ -6,15 +6,18 @@ set (CMAKE_C_STANDARD 11)
 
 set(DebuggerBootstrap_Headers 
 	DynamicStringArray.h
+	ProjectDescription.h
 )
 
 set(DebuggerBootstrap_Sources
 	main.c
 	DynamicStringArray.c
+	ProjectDescription.c
 )
 
 add_executable(DebuggerBootstrap ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
 
+target_include_directories(DebuggerBootstrap PRIVATE json-c ${CMAKE_BINARY_DIR}/json-c-build)
 find_package(OpenSSL REQUIRED)
 target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
 

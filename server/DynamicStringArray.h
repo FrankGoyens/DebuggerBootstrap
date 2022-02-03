@@ -8,8 +8,8 @@ struct DynamicStringArray{
 	size_t capacity;
 };
 
-void init(struct DynamicStringArray* string_array);
+void DynamicStringArrayInit(struct DynamicStringArray* string_array);
 
-void deinit(struct DynamicStringArray* string_array);
+void DynamicStringArrayDeinit(struct DynamicStringArray* string_array);
 
-void append(struct DynamicStringArray* string_array, const char* item);
+void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const char* item);
