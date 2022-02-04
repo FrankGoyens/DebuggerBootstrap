@@ -48,8 +48,7 @@ int main(int argc, char** argv) {
     printf("\n");
 
     struct ProjectDescription description;
-    const char* json_string = "{\"executable_name\": \"LightSpeedFileExplorer\", \"link_dependencies_for_executable\": "
-                              "[\"freetype.so\", \"libpng.so\"]}";
+
     if (!ProjectDescriptionLoadFromJSON(json_string, &description)) {
         fprintf(stderr, "Something went wrong parsing json\n");
         return 1;

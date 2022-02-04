@@ -4,12 +4,15 @@ enable_testing()
 find_package(GTest REQUIRED)
 
 add_executable(DebuggerBootstrapTest 
-	../ProjectDescription.c 
 	../DynamicStringArray.c 
+	../ProjectDescription.c 
+	../ProjectDescription_json.c 
 	
 	testProjectDescription.cpp
 )
-target_link_libraries(DebuggerBootstrapTest GTest::GTest GTest::Main)
+
+add_dependencies(DebuggerBootstrapTest json-c)
+target_link_libraries(DebuggerBootstrapTest GTest::GTest GTest::Main json-c-target)
 
 include(GoogleTest)
 gtest_discover_tests(DebuggerBootstrapTest)

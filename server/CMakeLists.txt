@@ -19,7 +19,6 @@ set(DebuggerBootstrap_Sources
 
 add_executable(DebuggerBootstrap ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
 
-target_include_directories(DebuggerBootstrap PRIVATE ../server_dependencies/json-c ${CMAKE_BINARY_DIR}/json-c-build)
 find_package(OpenSSL REQUIRED)
 target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
 
@@ -37,7 +36,13 @@ ExternalProject_Add(json-c
 )	
 
 add_dependencies(DebuggerBootstrap json-c)
-target_link_libraries(DebuggerBootstrap ${json-c_BUILD_DIR}/libjson-c.a)
+
+#An interface target for all necessary json-c linking
+add_library(json-c-target INTERFACE)
+target_include_directories(json-c-target INTERFACE ../server_dependencies/json-c ${CMAKE_BINARY_DIR}/json-c-build)
+target_link_libraries(json-c-target INTERFACE ${json-c_BUILD_DIR}/libjson-c.a)
+
+target_link_libraries(DebuggerBootstrap json-c-target)
 
 add_subdirectory(test)
 
