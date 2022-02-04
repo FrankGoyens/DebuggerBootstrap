@@ -61,3 +61,18 @@ TEST(testProjectDescription, LoadFromJSON_NoLinkTimeDeps) {
 
     EXPECT_EQ(0, created_description.description.link_dependencies_for_executable.size);
 }
+
+TEST(testProjectDescription, DumpToJSON) {
+    ProjectDescriptionRAII given_description;
+
+    ProjectDescriptionInit(&given_description.description, "DebuggerBootstrap");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "first.so");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "second.so");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "third.so");
+
+    char* created_json_dump = ProjectDescriptionDumpToJSON(&given_description.description);
+    EXPECT_EQ(std::string("{ \"executable_name\": \"DebuggerBootstrap\", \"link_dependencies_for_executable\": "
+                          "[ \"first.so\", \"second.so\", \"third.so\" ] }"),
+              created_json_dump);
+    free(created_json_dump);
+}

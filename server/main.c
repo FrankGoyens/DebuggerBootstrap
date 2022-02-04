@@ -46,20 +46,5 @@ int main(int argc, char** argv) {
         printf("%x", hash[i]);
     }
     printf("\n");
-
-    struct ProjectDescription description;
-
-    if (!ProjectDescriptionLoadFromJSON(json_string, &description)) {
-        fprintf(stderr, "Something went wrong parsing json\n");
-        return 1;
-    }
-    printf("Project description\nExecutable=%s\nDependencies=[", description.executable_name);
-    if (description.link_dependencies_for_executable.size > 0)
-        printf("%s,", description.link_dependencies_for_executable.data[0]);
-    for (int i = 1; i < description.link_dependencies_for_executable.size; ++i) {
-        printf("%s", description.link_dependencies_for_executable.data[i]);
-    }
-    printf("]\n");
-    ProjectDescriptionDeinit(&description);
     return 0;
 }

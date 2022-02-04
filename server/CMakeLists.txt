@@ -11,13 +11,19 @@ set(DebuggerBootstrap_Headers
 )
 
 set(DebuggerBootstrap_Sources
-	main.c
 	DynamicStringArray.c
 	ProjectDescription.c
 	ProjectDescription_json.c
+	
+	protocol/protocol.c
 )
 
-add_executable(DebuggerBootstrap ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
+#Everythin but main.c is put into its own library, that way it is easier to setup the test executable
+add_library(DebuggerBootstrap_lib STATIC ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
+target_include_directories(DebuggerBootstrap_lib PUBLIC protocol)
+
+add_executable(DebuggerBootstrap main.c)
+target_link_libraries(DebuggerBootstrap DebuggerBootstrap_lib)
 
 find_package(OpenSSL REQUIRED)
 target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
@@ -35,14 +41,14 @@ ExternalProject_Add(json-c
 	INSTALL_COMMAND ""
 )	
 
-add_dependencies(DebuggerBootstrap json-c)
+add_dependencies(DebuggerBootstrap_lib json-c)
 
 #An interface target for all necessary json-c linking
 add_library(json-c-target INTERFACE)
 target_include_directories(json-c-target INTERFACE ../server_dependencies/json-c ${CMAKE_BINARY_DIR}/json-c-build)
 target_link_libraries(json-c-target INTERFACE ${json-c_BUILD_DIR}/libjson-c.a)
 
-target_link_libraries(DebuggerBootstrap json-c-target)
+target_link_libraries(DebuggerBootstrap_lib json-c-target)
 
 add_subdirectory(test)
 
