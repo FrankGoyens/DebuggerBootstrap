@@ -11,6 +11,7 @@
 
 #include "DynamicStringArray.h"
 #include "ProjectDescription.h"
+#include "ProjectDescription_json.h"
 
 static _Thread_local struct DynamicStringArray ftw_result_store;
 
@@ -23,38 +24,6 @@ static int display_info(const char* fpath, const struct stat* sb, int tflag, str
 }
 
 void CalculateSHA1Hash(const char* data, size_t dataLength, unsigned char* hash) { SHA1(data, dataLength, hash); }
-
-int ProjectDescriptionFromJSON(struct ProjectDescription* project_description, const char* json_string) {
-    json_object* root = json_tokener_parse(json_string);
-
-    json_object* executable_name_json = json_object_object_get(root, "executable_name");
-    json_object* link_dependencies_for_executable_json =
-        json_object_object_get(root, "link_dependencies_for_executable");
-
-    if (executable_name_json == NULL || link_dependencies_for_executable_json == NULL)
-        return 0;
-
-    if (!json_object_is_type(executable_name_json, json_type_string))
-        return 0;
-
-    if (!json_object_is_type(link_dependencies_for_executable_json, json_type_array))
-        return 0;
-
-    ProjectDescriptionInit(project_description, json_object_get_string(executable_name_json));
-
-    int array_length = json_object_array_length(link_dependencies_for_executable_json);
-    for (int i = 0; i < array_length; ++i) {
-        json_object* dependency = json_object_array_get_idx(link_dependencies_for_executable_json, i);
-        if (json_object_is_type(executable_name_json, json_type_string))
-            DynamicStringArrayAppend(&project_description->link_dependencies_for_executable,
-                                     json_object_get_string(dependency));
-    }
-
-    printf("The pretty formatted json:\n%s\n", json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-    json_object_put(root);
-
-    return 1;
-}
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -81,7 +50,7 @@ int main(int argc, char** argv) {
     struct ProjectDescription description;
     const char* json_string = "{\"executable_name\": \"LightSpeedFileExplorer\", \"link_dependencies_for_executable\": "
                               "[\"freetype.so\", \"libpng.so\"]}";
-    if (!ProjectDescriptionFromJSON(&description, json_string)) {
+    if (!ProjectDescriptionLoadFromJSON(json_string, &description)) {
         fprintf(stderr, "Something went wrong parsing json\n");
         return 1;
     }

@@ -7,12 +7,14 @@ set (CMAKE_C_STANDARD 11)
 set(DebuggerBootstrap_Headers 
 	DynamicStringArray.h
 	ProjectDescription.h
+	ProjectDescription_json.h
 )
 
 set(DebuggerBootstrap_Sources
 	main.c
 	DynamicStringArray.c
 	ProjectDescription.c
+	ProjectDescription_json.c
 )
 
 add_executable(DebuggerBootstrap ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
