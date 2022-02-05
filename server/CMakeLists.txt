@@ -8,12 +8,14 @@ set(DebuggerBootstrap_Headers
 	DynamicStringArray.h
 	ProjectDescription.h
 	ProjectDescription_json.h
+	EventDispatch.h
 )
 
 set(DebuggerBootstrap_Sources
 	DynamicStringArray.c
 	ProjectDescription.c
 	ProjectDescription_json.c
+	EventDispatch.c
 	
 	protocol/protocol.c
 )

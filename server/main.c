@@ -10,6 +10,7 @@
 #include <json.h>
 
 #include "DynamicStringArray.h"
+#include "EventDispatch.h"
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
 
@@ -46,5 +47,8 @@ int main(int argc, char** argv) {
         printf("%x", hash[i]);
     }
     printf("\n");
+
+    StartEventDispatch(1337);
+
     return 0;
 }
