@@ -9,6 +9,8 @@ set(DebuggerBootstrap_Headers
 	ProjectDescription.h
 	ProjectDescription_json.h
 	EventDispatch.h
+
+	protocol/Protocol.h
 )
 
 set(DebuggerBootstrap_Sources
@@ -17,7 +19,7 @@ set(DebuggerBootstrap_Sources
 	ProjectDescription_json.c
 	EventDispatch.c
 	
-	protocol/protocol.c
+	protocol/Protocol.c
 )
 
 #Everythin but main.c is put into its own library, that way it is easier to setup the test executable

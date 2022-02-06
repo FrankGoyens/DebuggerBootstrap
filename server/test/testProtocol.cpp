@@ -3,7 +3,7 @@
 #include <limits>
 
 extern "C" {
-#include "../../protocol/protocol.h"
+#include "../../protocol/Protocol.h"
 #include "../ProjectDescription.h"
 #include "../ProjectDescription_json.h"
 }

@@ -1,4 +1,4 @@
-#include "protocol.h"
+#include "Protocol.h"
 
 #include <stdlib.h>
 #include <string.h>
