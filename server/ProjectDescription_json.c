@@ -19,15 +19,19 @@ int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescri
     json_object* root = json_tokener_parse(json_string);
 
     json_object* executable_name_json = json_object_object_get(root, "executable_name");
+    json_object* executable_hash_json = json_object_object_get(root, "executable_hash");
     json_object* link_dependencies_for_executable_json =
         json_object_object_get(root, "link_dependencies_for_executable");
     json_object* link_dependencies_for_executable_hashes_json =
         json_object_object_get(root, "link_dependencies_for_executable_hashes");
 
-    if (executable_name_json == NULL || link_dependencies_for_executable_json == NULL)
+    if (executable_name_json == NULL || link_dependencies_for_executable_json == NULL || executable_hash_json == NULL)
         return json_object_put(root), 0;
 
     if (!json_object_is_type(executable_name_json, json_type_string))
+        return json_object_put(root), 0;
+
+    if (!json_object_is_type(executable_hash_json, json_type_string))
         return json_object_put(root), 0;
 
     if (!json_object_is_type(link_dependencies_for_executable_json, json_type_array))
@@ -36,7 +40,8 @@ int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescri
     if (!json_object_is_type(link_dependencies_for_executable_hashes_json, json_type_array))
         return json_object_put(root), 0;
 
-    ProjectDescriptionInit(project_description, json_object_get_string(executable_name_json));
+    ProjectDescriptionInit(project_description, json_object_get_string(executable_name_json),
+                           json_object_get_string(executable_hash_json));
 
     ReadJSONArray(link_dependencies_for_executable_json, &project_description->link_dependencies_for_executable);
     ReadJSONArray(link_dependencies_for_executable_hashes_json,
@@ -54,6 +59,7 @@ static void DumpIntoJSONArray(const struct DynamicStringArray* dynamic_array, js
 char* ProjectDescriptionDumpToJSON(struct ProjectDescription* const description) {
     json_object* root = json_object_new_object();
     json_object_object_add(root, "executable_name", json_object_new_string(description->executable_name));
+    json_object_object_add(root, "executable_hash", json_object_new_string(description->executable_hash));
     json_object* link_dependencies_for_executable_json_array = json_object_new_array();
     json_object* link_dependencies_for_executable_hashes_json_array = json_object_new_array();
 

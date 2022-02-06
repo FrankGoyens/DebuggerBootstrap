@@ -10,10 +10,13 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 
     ProjectDescription given_description;
 
-    ProjectDescriptionInit(&given_description, "DebuggerBootstrap");
+    ProjectDescriptionInit(&given_description, "DebuggerBootstrap", "abcd");
     DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "first.so");
     DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "second.so");
     DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "third.so");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "defg");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "hijk");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "lmno");
 
     char* given_description_json = ProjectDescriptionDumpToJSON(&given_description);
     const size_t given_json_size = strlen(given_description_json) + 1;
