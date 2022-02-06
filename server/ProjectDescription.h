@@ -5,6 +5,7 @@
 struct ProjectDescription {
     char* executable_name;
     struct DynamicStringArray link_dependencies_for_executable;
+    struct DynamicStringArray link_dependencies_for_executable_hashes;
 };
 
 void ProjectDescriptionInit(struct ProjectDescription*, const char* executable_name);

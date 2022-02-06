@@ -17,7 +17,8 @@ TEST(testProjectDescription, LoadFromJSON) {
     ProjectDescriptionRAII created_description;
 
     const char* json_string = "{\"executable_name\": \"LightSpeedFileExplorer\", \"link_dependencies_for_executable\": "
-                              "[\"freetype.so\", \"libpng.so\"]}";
+                              "[\"freetype.so\", \"libpng.so\"], \"link_dependencies_for_executable_hashes\": "
+                              "[\"abcd\", \"efgh\"]}";
     ASSERT_TRUE(ProjectDescriptionLoadFromJSON(json_string, &created_description.description));
 
     EXPECT_EQ(std::string(created_description.description.executable_name), "LightSpeedFileExplorer");
@@ -25,6 +26,10 @@ TEST(testProjectDescription, LoadFromJSON) {
     ASSERT_EQ(2u, created_description.description.link_dependencies_for_executable.size);
     EXPECT_EQ(std::string(created_description.description.link_dependencies_for_executable.data[0]), "freetype.so");
     EXPECT_EQ(std::string(created_description.description.link_dependencies_for_executable.data[1]), "libpng.so");
+
+    ASSERT_EQ(2u, created_description.description.link_dependencies_for_executable_hashes.size);
+    EXPECT_EQ(std::string(created_description.description.link_dependencies_for_executable_hashes.data[0]), "abcd");
+    EXPECT_EQ(std::string(created_description.description.link_dependencies_for_executable_hashes.data[1]), "efgh");
 }
 
 TEST(testProjectDescription, LoadFromIncompleteJSON) {
@@ -56,6 +61,7 @@ TEST(testProjectDescription, LoadFromJSON_NoLinkTimeDeps) {
 
     ASSERT_TRUE(ProjectDescriptionLoadFromJSON(
         "{\"executable_name\": \"LightSpeedFileExplorer\", \"link_dependencies_for_executable\": "
+        "[], \"link_dependencies_for_executable_hashes\": "
         "[]}",
         &created_description.description));
 
@@ -69,10 +75,14 @@ TEST(testProjectDescription, DumpToJSON) {
     DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "first.so");
     DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "second.so");
     DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable, "third.so");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable_hashes, "abcd");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable_hashes, "efgh");
+    DynamicStringArrayAppend(&given_description.description.link_dependencies_for_executable_hashes, "ijkl");
 
     char* created_json_dump = ProjectDescriptionDumpToJSON(&given_description.description);
     EXPECT_EQ(std::string("{ \"executable_name\": \"DebuggerBootstrap\", \"link_dependencies_for_executable\": "
-                          "[ \"first.so\", \"second.so\", \"third.so\" ] }"),
+                          "[ \"first.so\", \"second.so\", \"third.so\" ], \"link_dependencies_for_executable_hashes\": "
+                          "[ \"abcd\", \"efgh\", \"ijkl\" ] }"),
               created_json_dump);
     free(created_json_dump);
 }
