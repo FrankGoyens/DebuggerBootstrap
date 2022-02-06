@@ -8,16 +8,6 @@ extern "C" {
 #include "../ProjectDescription_json.h"
 }
 
-TEST(testProtocol, DivideAndCombineValueUsingLowerAndUpper) {
-    const uint16_t given_value = std::numeric_limits<uint16_t>::max();
-    uint8_t created_lower, created_upper;
-    DivideIntoLowerAndUpperBytes(given_value, &created_lower, &created_upper);
-    EXPECT_EQ(255, created_lower);
-    EXPECT_EQ(255, created_upper);
-    const uint16_t created_value = CombineIntoValue(created_lower, created_upper);
-    EXPECT_EQ(std::numeric_limits<uint16_t>::max(), created_value);
-}
-
 TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 
     ProjectDescription given_description;
@@ -38,16 +28,15 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION, packet[0]);
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION, packet[1]);
-    EXPECT_EQ(given_json_size, CombineIntoValue(packet[2], packet[3]));
-    EXPECT_EQ(std::string(given_description_json) + '\0', std::string(&packet[4], given_json_size));
+    EXPECT_EQ(std::string(given_description_json) + '\0', std::string(&packet[2], given_json_size));
 
     free(given_description_json);
 
     // Decoding starts here
 
-    size_t created_json_part_offset, created_json_part_size;
+    size_t created_json_part_offset;
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION,
-              DecodePacket(packet, packet_size, &created_json_part_offset, &created_json_part_size));
+              DecodePacket(packet, packet_size, &created_json_part_offset));
 
     ProjectDescription created_decoded_description;
     EXPECT_TRUE(ProjectDescriptionLoadFromJSON(packet + created_json_part_offset, &created_decoded_description));
@@ -59,4 +48,35 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 
     ProjectDescriptionDeinit(&created_decoded_description);
     free(packet);
+}
+
+TEST(testProtocol, MakeAndDecodeSubscriptionResponsePacket) {
+    char* created_packet;
+    size_t created_packet_size;
+    MakeRequestSubscriptionPacket(&created_packet, &created_packet_size);
+
+    EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION, created_packet[0]);
+    EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST, created_packet[1]);
+
+    // Decoding starts here
+
+    size_t created_header_offset;
+    EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST,
+              DecodePacket(created_packet, created_packet_size, &created_header_offset));
+    EXPECT_EQ(2u, created_header_offset);
+
+    free(created_packet);
+}
+
+TEST(testProtocol, FindNullTerminator) {
+    char given_packet[128];
+    memset(given_packet, 'a', 128);
+
+    EXPECT_EQ(128, FindNullTerminator(given_packet, 128));
+
+    given_packet[23] = '\0';
+    EXPECT_EQ(23, FindNullTerminator(given_packet, 128));
+
+    given_packet[0] = '\0';
+    EXPECT_EQ(0, FindNullTerminator(given_packet, 128));
 }
