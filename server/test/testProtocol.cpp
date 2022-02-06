@@ -1,7 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <limits>
-
 extern "C" {
 #include "../../protocol/Protocol.h"
 #include "../ProjectDescription.h"
