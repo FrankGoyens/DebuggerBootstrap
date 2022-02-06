@@ -6,6 +6,7 @@ find_package(GTest REQUIRED)
 add_executable(DebuggerBootstrapTest 	
 	testProjectDescription.cpp
 	testProtocol.cpp
+	testBootstrapper.cpp
 )
 
 add_dependencies(DebuggerBootstrapTest json-c)

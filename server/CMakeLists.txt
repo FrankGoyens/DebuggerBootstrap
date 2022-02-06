@@ -9,6 +9,7 @@ set(DebuggerBootstrap_Headers
 	ProjectDescription.h
 	ProjectDescription_json.h
 	EventDispatch.h
+	Bootstrapper.h
 
 	protocol/Protocol.h
 )
@@ -18,7 +19,8 @@ set(DebuggerBootstrap_Sources
 	ProjectDescription.c
 	ProjectDescription_json.c
 	EventDispatch.c
-	
+	Bootstrapper.c
+
 	protocol/Protocol.c
 )
 
