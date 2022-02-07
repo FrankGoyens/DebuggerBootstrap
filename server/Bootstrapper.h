@@ -1,12 +1,16 @@
 #pragma once
 
+#include <stddef.h>
+
 struct ProjectDescription;
 struct DynamicStringArray;
 
 struct Bootstrapper {
     void* userdata;
-    int(startGDBServer)(void*);
-    int(stopGDBServer)(void*);
+    int (*startGDBServer)(void*);
+    int (*stopGDBServer)(void*);
+    int (*fileExists)(const char*, void*);
+    void (*calculateHash)(const char*, char**, size_t*, void*);
 
     void* _internal;
 };
@@ -16,7 +20,7 @@ void BootstrapperDeinit(struct Bootstrapper*);
 
 void RecieveNewProjectDescription(struct Bootstrapper*, struct ProjectDescription*);
 void ChangeFileHash(struct Bootstrapper*, const char* file_name, const char* new_hash);
-int IsProjectLoaded(const struct Boostrapper*);
+int IsProjectLoaded(const struct Bootstrapper*);
 // Up/Down status, according to the Boostrapper
 int IsGDBServerUp(const struct Bootstrapper*);
 void ReportMissingFiles(const struct Bootstrapper*, struct DynamicStringArray*);
