@@ -18,6 +18,7 @@ struct Bootstrapper {
 void BootstrapperInit(struct Bootstrapper*);
 void BootstrapperDeinit(struct Bootstrapper*);
 
+//! \brief Ownership for the project description is transferred
 void RecieveNewProjectDescription(struct Bootstrapper*, struct ProjectDescription*);
 void ChangeFileHash(struct Bootstrapper*, const char* file_name, const char* new_hash);
 int IsProjectLoaded(const struct Bootstrapper*);

@@ -13,3 +13,4 @@ void DynamicStringArrayInit(struct DynamicStringArray* string_array);
 void DynamicStringArrayDeinit(struct DynamicStringArray* string_array);
 
 void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const char* item);
+void DynamicStringArrayClear(struct DynamicStringArray*);

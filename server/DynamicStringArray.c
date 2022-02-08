@@ -13,8 +13,7 @@ void DynamicStringArrayInit(struct DynamicStringArray* string_array) {
 }
 
 void DynamicStringArrayDeinit(struct DynamicStringArray* string_array) {
-    for (int i = 0; i < string_array->size; ++i)
-        free(string_array->data[i]);
+    DynamicStringArrayClear(string_array);
     free(string_array->data);
 }
 
@@ -30,4 +29,9 @@ void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const cha
     string_array->data[string_array->size] = (char*)malloc(item_length + 1);
     strncpy(string_array->data[string_array->size], item, item_length + 1);
     ++string_array->size;
+}
+
+void DynamicStringArrayClear(struct DynamicStringArray* string_array) {
+    for (int i = 0; i < string_array->size; ++i)
+        free(string_array->data[i]);
 }

@@ -8,7 +8,6 @@
 
 struct BootstrapperInternal {
     int gdbIsRunning;
-    int projectIsLoaded;
     struct ProjectDescription projectDescription;
 
     struct DynamicStringArray existing, missing, hashesForExisting;
@@ -17,15 +16,29 @@ struct BootstrapperInternal {
 void BootstrapperInit(struct Bootstrapper* bootstrapper) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)malloc(sizeof(struct BootstrapperInternal));
     internal->gdbIsRunning = 0;
-    internal->projectIsLoaded = 0;
+    ProjectDescriptionInit(&internal->projectDescription, "", "");
+    DynamicStringArrayInit(&internal->existing);
+    DynamicStringArrayInit(&internal->missing);
+    DynamicStringArrayInit(&internal->hashesForExisting);
     bootstrapper->_internal = internal;
 }
-void BootstrapperDeinit(struct Bootstrapper* bootstrapper) { free(bootstrapper->_internal); }
+
+void BootstrapperDeinit(struct Bootstrapper* bootstrapper) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (internal) {
+        ProjectDescriptionDeinit(&internal->projectDescription);
+        DynamicStringArrayDeinit(&internal->existing);
+        DynamicStringArrayDeinit(&internal->missing);
+        DynamicStringArrayDeinit(&internal->hashesForExisting);
+
+        free(bootstrapper->_internal);
+    }
+}
 
 static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
                       struct DynamicStringArray* existing, struct DynamicStringArray* missing) {
-    DynamicStringArrayInit(existing);
-    DynamicStringArrayInit(missing);
+    DynamicStringArrayClear(existing);
+    DynamicStringArrayClear(missing);
     if (bootstrapper->fileExists(internal->projectDescription.executable_name, bootstrapper->userdata))
         DynamicStringArrayAppend(existing, internal->projectDescription.executable_name);
     else
@@ -41,10 +54,10 @@ static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInte
 
 static void CalculateHashes(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
                             struct DynamicStringArray* hashes) {
-    DynamicStringArrayInit(hashes);
+    DynamicStringArrayClear(hashes);
     for (int i = 0; i < internal->existing.size; ++i) {
         char* hash;
-        size_t hash_size;
+        size_t hash_size = 0;
         bootstrapper->calculateHash(internal->existing.data[i], &hash, &hash_size, bootstrapper->userdata);
         if (hash_size > 0) {
             hash = realloc(hash, hash_size + 1);
@@ -70,6 +83,9 @@ static int FindExistingFile(const char* existing_file, const struct ProjectDescr
 }
 
 static int ShouldStartGDBServer(struct BootstrapperInternal* internal) {
+    if (internal->existing.size > internal->hashesForExisting.size)
+        return 0;
+
     for (int existingIndex = 0; existingIndex < internal->existing.size; ++existingIndex) {
         const char* actual_hash = internal->hashesForExisting.data[existingIndex];
         char* wanted_hash;
@@ -96,12 +112,16 @@ static void Stop(struct Bootstrapper* bootstrapper, struct BootstrapperInternal*
     internal->gdbIsRunning = 0;
 }
 
+static int ProjectIsLoaded(struct BootstrapperInternal* internal) {
+    return strcmp(internal->projectDescription.executable_name, "") != 0;
+}
+
 void RecieveNewProjectDescription(struct Bootstrapper* bootstrapper, struct ProjectDescription* description) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return;
 
-    if (internal->projectIsLoaded) {
+    if (ProjectIsLoaded(internal)) {
         ProjectDescriptionDeinit(&internal->projectDescription);
         DynamicStringArrayDeinit(&internal->existing);
         DynamicStringArrayDeinit(&internal->missing);
@@ -109,8 +129,8 @@ void RecieveNewProjectDescription(struct Bootstrapper* bootstrapper, struct Proj
         Stop(bootstrapper, internal);
     }
 
+    ProjectDescriptionDeinit(&internal->projectDescription);
     internal->projectDescription = *description;
-    internal->projectIsLoaded = 1;
 
     FindFiles(bootstrapper, internal, &internal->existing, &internal->missing);
     CalculateHashes(bootstrapper, internal, &internal->hashesForExisting);
@@ -123,7 +143,7 @@ int IsProjectLoaded(const struct Bootstrapper* bootstrapper) {
     if (!internal)
         return 0;
 
-    return internal->projectIsLoaded;
+    return ProjectIsLoaded(internal);
 }
 
 int IsGDBServerUp(const struct Bootstrapper* bootstrapper) {
@@ -136,7 +156,7 @@ int IsGDBServerUp(const struct Bootstrapper* bootstrapper) {
 
 void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* missing_files) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
-    if (!internal || !internal->projectIsLoaded)
+    if (!internal || !ProjectIsLoaded(internal))
         return;
 
     *missing_files = internal->missing;
@@ -145,7 +165,7 @@ void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicS
 void ReportDifferentFiles(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
                           struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
-    if (!internal || !internal->projectIsLoaded)
+    if (!internal || !ProjectIsLoaded(internal))
         return;
     // TODO
 }

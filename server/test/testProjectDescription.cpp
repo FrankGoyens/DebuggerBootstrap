@@ -13,6 +13,12 @@ struct ProjectDescriptionRAII {
 };
 } // namespace
 
+TEST(testProjectDescription, EmptyName) {
+    ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "", "");
+    ProjectDescriptionDeinit(&given_description);
+}
+
 TEST(testProjectDescription, LoadFromJSON) {
     ProjectDescriptionRAII created_description;
 

@@ -55,6 +55,5 @@ TEST(testBootstrapper, RecieveNewProjectDescription) {
 
     RecieveNewProjectDescription(&given_bootstrapper, &given_description);
 
-    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
