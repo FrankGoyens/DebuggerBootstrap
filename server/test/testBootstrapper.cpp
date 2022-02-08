@@ -54,6 +54,30 @@ TEST(testBootstrapper, RecieveNewProjectDescription) {
     ProjectDescriptionInit(&given_description, "LightSpeedFileExplorer", "abcd");
 
     RecieveNewProjectDescription(&given_bootstrapper, &given_description);
+    ASSERT_TRUE(GetProjectDescription(&given_bootstrapper));
+
+    EXPECT_TRUE(IsProjectLoaded(&given_bootstrapper));
+    EXPECT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    BootstrapperDeinit(&given_bootstrapper);
+}
+
+TEST(testBootstrapper, RecieveNewProjectDescriptionTwice) {
+    struct Bootstrapper given_bootstrapper = {
+        NULL, &FakeStartGDBServer, &FakeStopGDBServer, &FakeFileExists, &FakeCalculateHash, NULL};
+    BootstrapperInit(&given_bootstrapper);
+
+    struct ProjectDescription given_first_description;
+    ProjectDescriptionInit(&given_first_description, "LightSpeedFileExplorer", "abcd");
+
+    RecieveNewProjectDescription(&given_bootstrapper, &given_first_description);
+
+    struct ProjectDescription given_second_description;
+    ProjectDescriptionInit(&given_second_description, "DebuggerBootstrap", "defgh");
+
+    RecieveNewProjectDescription(&given_bootstrapper, &given_second_description);
+    ASSERT_TRUE(GetProjectDescription(&given_bootstrapper));
+    EXPECT_EQ(std::string("DebuggerBootstrap"), GetProjectDescription(&given_bootstrapper)->executable_name);
 
     BootstrapperDeinit(&given_bootstrapper);
 }

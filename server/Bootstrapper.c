@@ -35,6 +35,14 @@ void BootstrapperDeinit(struct Bootstrapper* bootstrapper) {
     }
 }
 
+struct ProjectDescription* GetProjectDescription(const struct Bootstrapper* bootstrapper) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (internal)
+        return &internal->projectDescription;
+
+    return NULL;
+}
+
 static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
                       struct DynamicStringArray* existing, struct DynamicStringArray* missing) {
     DynamicStringArrayClear(existing);
@@ -121,16 +129,10 @@ void RecieveNewProjectDescription(struct Bootstrapper* bootstrapper, struct Proj
     if (!internal)
         return;
 
-    if (ProjectIsLoaded(internal)) {
-        ProjectDescriptionDeinit(&internal->projectDescription);
-        DynamicStringArrayDeinit(&internal->existing);
-        DynamicStringArrayDeinit(&internal->missing);
-        DynamicStringArrayDeinit(&internal->hashesForExisting);
-        Stop(bootstrapper, internal);
-    }
-
     ProjectDescriptionDeinit(&internal->projectDescription);
     internal->projectDescription = *description;
+
+    Stop(bootstrapper, internal);
 
     FindFiles(bootstrapper, internal, &internal->existing, &internal->missing);
     CalculateHashes(bootstrapper, internal, &internal->hashesForExisting);

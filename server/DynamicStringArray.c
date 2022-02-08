@@ -34,4 +34,5 @@ void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const cha
 void DynamicStringArrayClear(struct DynamicStringArray* string_array) {
     for (int i = 0; i < string_array->size; ++i)
         free(string_array->data[i]);
+    string_array->size = 0;
 }
