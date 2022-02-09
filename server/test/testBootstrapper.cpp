@@ -26,9 +26,9 @@ static void FakeCalculateHash(const char* file_name, char** hash, size_t* hash_s
         const auto* fake_userdata = static_cast<FakeUserdata*>(userdata);
         const auto hashIt = fake_userdata->hashes.find(file_name);
         ASSERT_NE(hashIt, fake_userdata->hashes.end()) << "Forgot to add a hash for file '" << file_name << "'?";
-        *hash = (char*)malloc(hashIt->second.size());
-        memcpy(*hash, hashIt->second.c_str(), hashIt->second.size());
         *hash_size = hashIt->second.size();
+        *hash = (char*)malloc(hashIt->second.size() + 1);
+        strcpy(*hash, hashIt->second.c_str());
     }
 }
 
@@ -51,7 +51,7 @@ TEST(testBootstrapper, InitialReporting) {
     DynamicStringArrayInit(&created_files);
     DynamicStringArrayInit(&created_actual_hashes);
     DynamicStringArrayInit(&created_wanted_hashes);
-    ReportDifferentFiles(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
+    ReportWantedVsActualHashes(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
     DynamicStringArrayDeinit(&created_files);
     DynamicStringArrayDeinit(&created_actual_hashes);
     DynamicStringArrayDeinit(&created_wanted_hashes);
@@ -125,6 +125,8 @@ TEST(testBootstrapper, ReportMissingFiles) {
     EXPECT_EQ(std::string("zlib.so"), created_missing_files.data[0]);
     EXPECT_EQ(std::string("libpng.so"), created_missing_files.data[1]);
 
+    DynamicStringArrayDeinit(&created_missing_files);
+
     given_userdata.existing_files.erase(given_userdata.existing_files.find("freetype.so"));
 
     // It's not this function's responsibility to check again whether there are new missing files
@@ -133,13 +135,14 @@ TEST(testBootstrapper, ReportMissingFiles) {
     EXPECT_EQ(std::string("zlib.so"), created_missing_files.data[0]);
     EXPECT_EQ(std::string("libpng.so"), created_missing_files.data[1]);
 
+    DynamicStringArrayDeinit(&created_missing_files);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
-TEST(testBootstrapper, ReportDifferentFiles_NoDifferences) {
+TEST(testBootstrapper, ReportWantedVsActualHashes) {
     FakeUserdata given_userdata{
         {"LightSpeedFileExplorer", "freetype.so", "zlib.so", "libpng.so"},
-        {{"LightSpeedFileExplorer", "abcd"}, {"freetype.so", "efgh"}, {"zlib.so", "ijkl"}, {"libpng.so", "mnop"}}};
+        {{"LightSpeedFileExplorer", "mnop"}, {"freetype.so", "ijkl"}, {"zlib.so", "efgh"}, {"libpng.so", "abcd"}}};
 
     struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
                                               &FakeStartGDBServer,
@@ -164,11 +167,26 @@ TEST(testBootstrapper, ReportDifferentFiles_NoDifferences) {
     DynamicStringArrayInit(&created_files);
     DynamicStringArrayInit(&created_actual_hashes);
     DynamicStringArrayInit(&created_wanted_hashes);
-    ReportDifferentFiles(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
+    ReportWantedVsActualHashes(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
 
-    EXPECT_EQ(0, created_files.size);
-    EXPECT_EQ(0, created_actual_hashes.size);
-    EXPECT_EQ(0, created_wanted_hashes.size);
+    ASSERT_EQ(4, created_files.size);
+    ASSERT_EQ(4, created_actual_hashes.size);
+    ASSERT_EQ(4, created_wanted_hashes.size);
+
+    EXPECT_EQ(std::string("LightSpeedFileExplorer"), created_files.data[0]);
+    EXPECT_EQ(std::string("freetype.so"), created_files.data[1]);
+    EXPECT_EQ(std::string("zlib.so"), created_files.data[2]);
+    EXPECT_EQ(std::string("libpng.so"), created_files.data[3]);
+
+    EXPECT_EQ(std::string("mnop"), created_actual_hashes.data[0]);
+    EXPECT_EQ(std::string("ijkl"), created_actual_hashes.data[1]);
+    EXPECT_EQ(std::string("efgh"), created_actual_hashes.data[2]);
+    EXPECT_EQ(std::string("abcd"), created_actual_hashes.data[3]);
+
+    EXPECT_EQ(std::string("abcd"), created_wanted_hashes.data[0]);
+    EXPECT_EQ(std::string("efgh"), created_wanted_hashes.data[1]);
+    EXPECT_EQ(std::string("ijkl"), created_wanted_hashes.data[2]);
+    EXPECT_EQ(std::string("mnop"), created_wanted_hashes.data[3]);
 
     DynamicStringArrayDeinit(&created_files);
     DynamicStringArrayDeinit(&created_actual_hashes);

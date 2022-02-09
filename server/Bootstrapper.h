@@ -26,6 +26,8 @@ void ChangeFileHash(struct Bootstrapper*, const char* file_name, const char* new
 int IsProjectLoaded(const struct Bootstrapper*);
 // Up/Down status, according to the Boostrapper
 int IsGDBServerUp(const struct Bootstrapper*);
+// Output argument must be initialized and will be owned by the caller
 void ReportMissingFiles(const struct Bootstrapper*, struct DynamicStringArray*);
-void ReportDifferentFiles(const struct Bootstrapper*, struct DynamicStringArray* files,
-                          struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes);
+// Output arguments must be initialized and will be owned by the caller
+void ReportWantedVsActualHashes(const struct Bootstrapper*, struct DynamicStringArray* files,
+                                struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes);

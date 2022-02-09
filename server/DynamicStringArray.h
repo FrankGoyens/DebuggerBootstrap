@@ -9,7 +9,7 @@ struct DynamicStringArray {
 };
 
 void DynamicStringArrayInit(struct DynamicStringArray* string_array);
-
+void DynamicStringArrayCopy(const struct DynamicStringArray* source, struct DynamicStringArray* destination);
 void DynamicStringArrayDeinit(struct DynamicStringArray* string_array);
 
 void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const char* item);

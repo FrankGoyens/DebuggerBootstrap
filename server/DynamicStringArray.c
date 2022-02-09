@@ -12,6 +12,17 @@ void DynamicStringArrayInit(struct DynamicStringArray* string_array) {
     string_array->data = (char**)malloc(DYNAMIC_STRING_ARRAY_INITIAL_CAPACITY * sizeof(char*));
 }
 
+void DynamicStringArrayCopy(const struct DynamicStringArray* source, struct DynamicStringArray* destination) {
+    destination->size = source->size;
+    destination->capacity = source->capacity;
+    destination->data = (char**)malloc(source->capacity * sizeof(char*));
+    for (int i = 0; i < destination->size; ++i) {
+        const size_t item_length = strlen(source->data[i]);
+        destination->data[i] = (char*)malloc(item_length + 1);
+        memcpy(destination->data[i], source->data[i], item_length + 1);
+    }
+}
+
 void DynamicStringArrayDeinit(struct DynamicStringArray* string_array) {
     DynamicStringArrayClear(string_array);
     free(string_array->data);

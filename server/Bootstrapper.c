@@ -68,8 +68,6 @@ static void CalculateHashes(struct Bootstrapper* bootstrapper, struct Bootstrapp
         size_t hash_size = 0;
         bootstrapper->calculateHash(internal->existing.data[i], &hash, &hash_size, bootstrapper->userdata);
         if (hash_size > 0) {
-            hash = realloc(hash, hash_size + 1);
-            hash[hash_size - 1] = '\0';
             DynamicStringArrayAppend(hashes, hash);
             free(hash);
         }
@@ -161,11 +159,11 @@ void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicS
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
-    *missing_files = internal->missing;
+    DynamicStringArrayCopy(&internal->missing, missing_files);
 }
 
-void ReportDifferentFiles(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
-                          struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes) {
+void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
+                                struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes) {
 
     DynamicStringArrayClear(files);
     DynamicStringArrayClear(actual_hashes);
@@ -174,5 +172,18 @@ void ReportDifferentFiles(const struct Bootstrapper* bootstrapper, struct Dynami
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
-    // TODO
+
+    DynamicStringArrayAppend(files, internal->projectDescription.executable_name);
+    for (int i = 0; i < internal->projectDescription.link_dependencies_for_executable.size; ++i) {
+        DynamicStringArrayAppend(files, internal->projectDescription.link_dependencies_for_executable.data[i]);
+    }
+
+    DynamicStringArrayAppend(wanted_hashes, internal->projectDescription.executable_hash);
+    for (int i = 0; i < internal->projectDescription.link_dependencies_for_executable_hashes.size; ++i) {
+        DynamicStringArrayAppend(wanted_hashes,
+                                 internal->projectDescription.link_dependencies_for_executable_hashes.data[i]);
+    }
+
+    DynamicStringArrayDeinit(actual_hashes);
+    DynamicStringArrayCopy(&internal->hashesForExisting, actual_hashes);
 }
