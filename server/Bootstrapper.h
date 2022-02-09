@@ -21,7 +21,7 @@ void BootstrapperDeinit(struct Bootstrapper*);
 struct ProjectDescription* GetProjectDescription(const struct Bootstrapper*);
 
 //! \brief Ownership of the project description is transferred
-void RecieveNewProjectDescription(struct Bootstrapper*, struct ProjectDescription*);
+void ReceiveNewProjectDescription(struct Bootstrapper*, struct ProjectDescription*);
 void ChangeFileHash(struct Bootstrapper*, const char* file_name, const char* new_hash);
 int IsProjectLoaded(const struct Bootstrapper*);
 // Up/Down status, according to the Boostrapper

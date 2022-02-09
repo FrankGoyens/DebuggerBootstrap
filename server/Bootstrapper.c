@@ -124,7 +124,7 @@ static int ProjectIsLoaded(struct BootstrapperInternal* internal) {
     return strcmp(internal->projectDescription.executable_name, "") != 0;
 }
 
-void RecieveNewProjectDescription(struct Bootstrapper* bootstrapper, struct ProjectDescription* description) {
+void ReceiveNewProjectDescription(struct Bootstrapper* bootstrapper, struct ProjectDescription* description) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return;
@@ -166,6 +166,11 @@ void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicS
 
 void ReportDifferentFiles(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
                           struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes) {
+
+    DynamicStringArrayClear(files);
+    DynamicStringArrayClear(actual_hashes);
+    DynamicStringArrayClear(wanted_hashes);
+
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
