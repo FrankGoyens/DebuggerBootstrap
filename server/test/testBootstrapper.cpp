@@ -193,3 +193,69 @@ TEST(testBootstrapper, ReportWantedVsActualHashes) {
     DynamicStringArrayDeinit(&created_wanted_hashes);
     BootstrapperDeinit(&given_bootstrapper);
 }
+
+TEST(testBootstrapper, ChangeFileWantedHash) {
+    FakeUserdata given_userdata{
+        {"LightSpeedFileExplorer", "freetype.so", "zlib.so", "libpng.so"},
+        {{"LightSpeedFileExplorer", "mnop"}, {"freetype.so", "ijkl"}, {"zlib.so", "efgh"}, {"libpng.so", "abcd"}}};
+
+    struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
+                                              &FakeStartGDBServer,
+                                              &FakeStopGDBServer,
+                                              &FakeFileExists,
+                                              &FakeCalculateHash,
+                                              NULL};
+
+    BootstrapperInit(&given_bootstrapper);
+    struct ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "LightSpeedFileExplorer", "abcd");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "freetype.so");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "zlib.so");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable, "libpng.so");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "efgh");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "ijkl");
+    DynamicStringArrayAppend(&given_description.link_dependencies_for_executable_hashes, "mnop");
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+
+    ASSERT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    given_userdata.hashes["LightSpeedFileExplorer"] = "abcd";
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    given_userdata.hashes["freetype.so"] = "efgh";
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    given_userdata.hashes["zlib.so"] = "ijkl";
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    given_userdata.hashes["libpng.so"] = "mnop";
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+
+    EXPECT_TRUE(IsGDBServerUp(&given_bootstrapper));
+
+    BootstrapperDeinit(&given_bootstrapper);
+}
+
+TEST(testBootstrapper, ChangeFileWantedHash) {
+    FakeUserdata given_userdata{{}, {"LightSpeedFileExplorer", "abcd"}};
+
+    struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
+                                              &FakeStartGDBServer,
+                                              &FakeStopGDBServer,
+                                              &FakeFileExists,
+                                              &FakeCalculateHash,
+                                              NULL};
+
+    BootstrapperInit(&given_bootstrapper);
+    struct ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "LightSpeedFileExplorer", "abcd");
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+
+    ASSERT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    given_userdata.existing_files.insert("LightSpeedFileExplorer");
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+
+    EXPECT_TRUE(IsGDBServerUp(&given_bootstrapper));
+
+    BootstrapperDeinit(&given_bootstrapper);
+}
