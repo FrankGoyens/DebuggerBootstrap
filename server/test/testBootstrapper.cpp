@@ -194,7 +194,7 @@ TEST(testBootstrapper, ReportWantedVsActualHashes) {
     BootstrapperDeinit(&given_bootstrapper);
 }
 
-TEST(testBootstrapper, ChangeFileWantedHash) {
+TEST(testBootstrapper, UpdateFileActualHash) {
     FakeUserdata given_userdata{
         {"LightSpeedFileExplorer", "freetype.so", "zlib.so", "libpng.so"},
         {{"LightSpeedFileExplorer", "mnop"}, {"freetype.so", "ijkl"}, {"zlib.so", "efgh"}, {"libpng.so", "abcd"}}};
@@ -223,19 +223,19 @@ TEST(testBootstrapper, ChangeFileWantedHash) {
     given_userdata.hashes["LightSpeedFileExplorer"] = "abcd";
     UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
     given_userdata.hashes["freetype.so"] = "efgh";
-    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    UpdateFileActualHash(&given_bootstrapper, "freetype.so");
     given_userdata.hashes["zlib.so"] = "ijkl";
-    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    UpdateFileActualHash(&given_bootstrapper, "zlib.so");
     given_userdata.hashes["libpng.so"] = "mnop";
-    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    UpdateFileActualHash(&given_bootstrapper, "libpng.so");
 
     EXPECT_TRUE(IsGDBServerUp(&given_bootstrapper));
 
     BootstrapperDeinit(&given_bootstrapper);
 }
 
-TEST(testBootstrapper, ChangeFileWantedHash) {
-    FakeUserdata given_userdata{{}, {"LightSpeedFileExplorer", "abcd"}};
+TEST(testBootstrapper, UpdateFileActualHash_FileBecomesExistant) {
+    FakeUserdata given_userdata{{}, {{"LightSpeedFileExplorer", "abcd"}}};
 
     struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
                                               &FakeStartGDBServer,

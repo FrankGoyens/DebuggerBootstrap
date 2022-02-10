@@ -42,6 +42,16 @@ void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const cha
     ++string_array->size;
 }
 
+void DynamicStringArrayErase(struct DynamicStringArray* string_array, size_t at) {
+    if (at < 0 || at >= string_array->size)
+        return;
+
+    free(string_array->data[at]);
+    for (int i = at + 1; i < string_array->size; ++i)
+        string_array->data[i - 1] = string_array->data[i];
+    --string_array->size;
+}
+
 void DynamicStringArrayClear(struct DynamicStringArray* string_array) {
     for (int i = 0; i < string_array->size; ++i)
         free(string_array->data[i]);

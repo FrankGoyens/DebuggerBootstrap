@@ -89,6 +89,9 @@ static int FindExistingFile(const char* existing_file, const struct ProjectDescr
 }
 
 static int ShouldStartGDBServer(struct BootstrapperInternal* internal) {
+    if (internal->missing.size > 0)
+        return 0;
+
     if (internal->existing.size > internal->hashesForExisting.size)
         return 0;
 
@@ -186,4 +189,45 @@ void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct 
 
     DynamicStringArrayDeinit(actual_hashes);
     DynamicStringArrayCopy(&internal->hashesForExisting, actual_hashes);
+}
+
+static int FindFile(const char* file, struct DynamicStringArray* files, size_t* position) {
+    for (int i = 0; i < files->size; ++i) {
+        if (strcmp(file, files->data[i]) == 0) {
+            *position = i;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_name) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal || !ProjectIsLoaded(internal))
+        return;
+
+    if (!bootstrapper->fileExists(file_name, bootstrapper->userdata))
+        return;
+
+    size_t find_index;
+    if (FindFile(file_name, &internal->missing, &find_index)) {
+        DynamicStringArrayErase(&internal->missing, find_index);
+        DynamicStringArrayAppend(&internal->existing, file_name);
+
+        char* hash;
+        size_t hash_size;
+        bootstrapper->calculateHash(file_name, &hash, &hash_size, bootstrapper->userdata);
+        DynamicStringArrayAppend(&internal->hashesForExisting, hash);
+        free(hash);
+    } else if (FindFile(file_name, &internal->existing, &find_index)) {
+        free(internal->hashesForExisting.data[find_index]);
+        size_t hash_size;
+        bootstrapper->calculateHash(file_name, &internal->hashesForExisting.data[find_index], &hash_size,
+                                    bootstrapper->userdata);
+    }
+
+    if (ShouldStartGDBServer(internal))
+        Start(bootstrapper, internal);
+    else
+        Stop(bootstrapper, internal);
 }
