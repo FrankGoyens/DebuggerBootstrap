@@ -6,6 +6,8 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 
 void StartEventDispatch(int port) {
@@ -41,15 +43,52 @@ void StartEventDispatch(int port) {
 
     printf("Connection accepted\n");
 
+    // for poll
+    int nfds, num_open_fds;
+    struct pollfd* pfds;
+
+    num_open_fds = nfds = 1;
+    pfds = calloc(nfds, sizeof(struct pollfd));
+
+    pfds[0].fd = client_sock;
+    pfds[0].events = POLLIN;
+
+    fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
+
+    size_t write_amount = 0;
     char client_message[2000];
     size_t read_size;
-    while ((read_size = recv(client_sock, client_message, 2000, 0)) > 0) {
-        write(client_sock, client_message, strlen(client_message));
-    }
+    for (;;) {
+        int ready = poll(pfds, nfds, 1000);
+        if (ready != 0) {
 
-    if (read_size == 0) {
-        printf("Client disconnected\n");
-    } else if (read_size == -1) {
-        fprintf(stderr, "recv failed\n");
+            if (pfds[0].revents & POLLIN) {
+
+                read_size = recv(client_sock, client_message, 2000, 0);
+
+                if (read_size > 0) {
+                    if (client_message[0] == 'q') {
+                        printf("exit requested\n");
+                        break;
+                    }
+                    printf("I will write something now %lu\n", ++write_amount);
+                    write(client_sock, client_message, strlen(client_message));
+                } else {
+                    printf("Client disconnected\n");
+                    break;
+                }
+
+                if (read_size == -1) {
+                    fprintf(stderr, "recv failed\n");
+                    break;
+                }
+            } else {
+                fprintf(stderr, "poll failed\n");
+                break;
+            }
+        } else {
+            printf("I do nothing this time %lu\n", ++write_amount);
+        }
     }
+    free(pfds);
 }
