@@ -259,3 +259,39 @@ TEST(testBootstrapper, UpdateFileActualHash_FileBecomesExistant) {
 
     BootstrapperDeinit(&given_bootstrapper);
 }
+
+TEST(testBootstrapper, IndicateRemovedFile) {
+    FakeUserdata given_userdata{{"LightSpeedFileExplorer"}, {{"LightSpeedFileExplorer", "abcd"}}};
+
+    struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
+                                              &FakeStartGDBServer,
+                                              &FakeStopGDBServer,
+                                              &FakeFileExists,
+                                              &FakeCalculateHash,
+                                              NULL};
+
+    BootstrapperInit(&given_bootstrapper);
+    struct ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "LightSpeedFileExplorer", "abcd");
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+
+    ASSERT_TRUE(IsGDBServerUp(&given_bootstrapper));
+
+    IndicateRemovedFile(&given_bootstrapper, "LightSpeedFileExplorer");
+    ASSERT_TRUE(IsGDBServerUp(&given_bootstrapper)); // The file actualy still exists
+
+    given_userdata.existing_files.erase(given_userdata.existing_files.find("LightSpeedFileExplorer"));
+    IndicateRemovedFile(&given_bootstrapper, "LightSpeedFileExplorer");
+    ASSERT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    IndicateRemovedFile(&given_bootstrapper, "LightSpeedFileExplorer");
+    ASSERT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    given_userdata.existing_files.insert("LightSpeedFileExplorer");
+    UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
+    ASSERT_TRUE(IsGDBServerUp(&given_bootstrapper));
+
+    BootstrapperDeinit(&given_bootstrapper);
+}

@@ -231,3 +231,22 @@ void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_na
     else
         Stop(bootstrapper, internal);
 }
+
+void IndicateRemovedFile(struct Bootstrapper* bootstrapper, const char* file_name) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal || !ProjectIsLoaded(internal))
+        return;
+
+    if (bootstrapper->fileExists(file_name, bootstrapper->userdata))
+        return;
+
+    size_t find_index;
+    if (FindFile(file_name, &internal->missing, &find_index)) {
+        return;
+    } else if (FindFile(file_name, &internal->existing, &find_index)) {
+        DynamicStringArrayErase(&internal->existing, find_index);
+
+        DynamicStringArrayAppend(&internal->missing, file_name);
+        Stop(bootstrapper, internal);
+    }
+}
