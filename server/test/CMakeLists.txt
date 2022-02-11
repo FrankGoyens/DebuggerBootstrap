@@ -1,5 +1,7 @@
 project(DebuggerBootstrapTest)
 
+set(CMAKE_CXX_STANDARD 17)
+
 enable_testing()
 find_package(GTest REQUIRED)
 

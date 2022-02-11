@@ -47,6 +47,10 @@ int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescri
     ReadJSONArray(link_dependencies_for_executable_hashes_json,
                   &project_description->link_dependencies_for_executable_hashes);
 
+    json_object* executable_arguments_json = json_object_object_get(root, "executable_arguments");
+    if (executable_arguments_json && json_object_is_type(executable_arguments_json, json_type_array))
+        ReadJSONArray(executable_arguments_json, &project_description->executable_arguments);
+
     json_object_put(root);
     return 1;
 }
@@ -70,6 +74,12 @@ char* ProjectDescriptionDumpToJSON(struct ProjectDescription* const description)
                            link_dependencies_for_executable_hashes_json_array);
     DumpIntoJSONArray(&description->link_dependencies_for_executable_hashes,
                       link_dependencies_for_executable_hashes_json_array);
+
+    if (description->executable_arguments.size > 0) {
+        json_object* executable_arguments_json_array = json_object_new_array();
+        json_object_object_add(root, "executable_arguments", executable_arguments_json_array);
+        DumpIntoJSONArray(&description->executable_arguments, executable_arguments_json_array);
+    }
 
     const char* project_description_json_string = json_object_to_json_string(root);
     const size_t json_length = strlen(project_description_json_string);

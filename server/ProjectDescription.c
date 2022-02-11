@@ -17,6 +17,7 @@ void ProjectDescriptionInit(struct ProjectDescription* project_description, cons
 
     DynamicStringArrayInit(&project_description->link_dependencies_for_executable);
     DynamicStringArrayInit(&project_description->link_dependencies_for_executable_hashes);
+    DynamicStringArrayInit(&project_description->executable_arguments);
 }
 
 void ProjectDescriptionDeinit(struct ProjectDescription* project_description) {
@@ -24,4 +25,5 @@ void ProjectDescriptionDeinit(struct ProjectDescription* project_description) {
     free(project_description->executable_hash);
     DynamicStringArrayDeinit(&project_description->link_dependencies_for_executable);
     DynamicStringArrayDeinit(&project_description->link_dependencies_for_executable_hashes);
+    DynamicStringArrayDeinit(&project_description->executable_arguments);
 }
