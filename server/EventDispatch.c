@@ -76,6 +76,28 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
+static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
+                                    struct PollingHandles* all_handles, int* running, size_t* write_amount) {
+    size_t read_size;
+
+    read_size = recv(client_sock, client_message, 2000, 0);
+
+    if (read_size > 0) {
+        if (client_message[0] == 'q') {
+            printf("exit requested\n");
+            *running = 0;
+        }
+        printf("I will write something now %lu\n", ++*write_amount);
+        write(client_sock, client_message, strlen(client_message));
+    } else if (read_size < 0) {
+        fprintf(stderr, "recv failed\n");
+        Erase(all_handles, fd_index);
+    } else {
+        printf("Client disconnected\n");
+        Erase(all_handles, fd_index);
+    }
+}
+
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     listen(socket_desc, 3);
 
@@ -103,33 +125,11 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
                         AddClientSocket(all_handles.pfds[fd_index].fd, &all_handles);
                         break;
                     case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
-                    case HANDLE_TYPE_CLIENT_SOCKET: {
-                        size_t read_size;
-
-                        const int client_sock = all_handles.pfds[fd_index].fd;
-
-                        read_size = recv(client_sock, client_message, 2000, 0);
-
-                        if (read_size > 0) {
-                            if (client_message[0] == 'q') {
-                                printf("exit requested\n");
-                                running = 0;
-                                break;
-                            }
-                            printf("I will write something now %lu\n", ++write_amount);
-                            write(client_sock, client_message, strlen(client_message));
-                        } else if (read_size < 0) {
-                            fprintf(stderr, "recv failed\n");
-                            Erase(&all_handles, fd_index);
-                            break;
-                        } else {
-                            printf("Client disconnected\n");
-                            Erase(&all_handles, fd_index);
-                            break;
-                        }
+                    case HANDLE_TYPE_CLIENT_SOCKET:
+                        RecieveClientSocketData(all_handles.pfds[fd_index].fd, fd_index, client_message, &all_handles,
+                                                &running, &write_amount);
 
                         break;
-                    }
                     }
                 }
             }
