@@ -10,6 +10,54 @@
 #include <poll.h>
 #include <sys/socket.h>
 
+enum HandleType {
+    HANDLE_TYPE_CLIENT_SOCKET,
+    HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION // This client socket will recieve status updates as well
+};
+
+struct PollingHandles {
+    struct pollfd* pfds;
+    enum HandleType* types;
+    size_t size, capacity;
+};
+
+static void Init(struct PollingHandles* handles) {
+    handles->size = 0;
+    handles->capacity = 1;
+    handles->pfds = (struct pollfd*)calloc(sizeof(struct pollfd), handles->capacity);
+    handles->types = (enum HandleType*)calloc(sizeof(enum HandleType), handles->capacity);
+}
+
+static void Deinit(struct PollingHandles* handles) {
+    free(handles->pfds);
+    free(handles->types);
+}
+
+static void Append(struct PollingHandles* handles, int fd, short events, enum HandleType type) {
+    if (handles->size == handles->capacity) {
+        handles->capacity *= 2;
+        handles->pfds = realloc(handles->pfds, handles->capacity);
+        handles->types = realloc(handles->types, handles->capacity);
+        memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
+        memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
+    }
+
+    handles->pfds[handles->size].fd = fd;
+    handles->pfds[handles->size].events = events;
+    handles->types[handles->size] = type;
+    ++handles->size;
+}
+
+static void Erase(struct PollingHandles* handles, size_t at) {
+    if (at < 0 || at >= handles->size)
+        return;
+    for (size_t i = at + 1; i < handles->size; ++i) {
+        handles->pfds[i - 1] = handles->pfds[i];
+        handles->types[i - 1] = handles->types[i];
+    }
+    --handles->size;
+}
+
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     listen(socket_desc, 3);
 
@@ -25,15 +73,10 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
     printf("Connection accepted\n");
 
-    // for poll
-    int nfds, num_open_fds;
-    struct pollfd* pfds;
+    struct PollingHandles all_handles;
+    Init(&all_handles);
 
-    num_open_fds = nfds = 1;
-    pfds = calloc(nfds, sizeof(struct pollfd));
-
-    pfds[0].fd = client_sock;
-    pfds[0].events = POLLIN;
+    Append(&all_handles, client_sock, POLLIN, HANDLE_TYPE_CLIENT_SOCKET);
 
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 
@@ -41,10 +84,10 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     char client_message[2000];
     size_t read_size;
     for (;;) {
-        int ready = poll(pfds, nfds, 1000);
+        int ready = poll(all_handles.pfds, all_handles.size, 1000);
         if (ready != 0) {
 
-            if (pfds[0].revents & POLLIN) {
+            if (all_handles.pfds[0].revents & POLLIN) {
 
                 read_size = recv(client_sock, client_message, 2000, 0);
 
@@ -72,7 +115,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
             printf("I do nothing this time %lu\n", ++write_amount);
         }
     }
-    free(pfds);
+    Deinit(&all_handles);
 }
 
 void StartEventDispatch(int port) {
