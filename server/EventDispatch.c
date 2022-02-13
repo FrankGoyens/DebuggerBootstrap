@@ -10,6 +10,8 @@
 #include <poll.h>
 #include <sys/socket.h>
 
+#define CLIENT_MESSAGE_READ_BUFFER_SIZE 128
+
 enum HandleType {
     HANDLE_TYPE_SERVER_SOCKET,
     HANDLE_TYPE_CLIENT_SOCKET,
@@ -79,15 +81,18 @@ static void Deinit(struct PollingHandles* handles) {
     free(handles->reading_buffers);
 }
 
+static void _extend(struct PollingHandles* handles) {
+    handles->capacity *= 2;
+    handles->pfds = realloc(handles->pfds, handles->capacity * sizeof(struct pollfd));
+    handles->types = realloc(handles->types, handles->capacity * sizeof(enum HandleType));
+    memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
+    memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
+    handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct ReadingBuffer));
+}
+
 static void Append(struct PollingHandles* handles, int fd, short events, enum HandleType type) {
-    if (handles->size == handles->capacity) {
-        handles->capacity *= 2;
-        handles->pfds = realloc(handles->pfds, handles->capacity * sizeof(struct pollfd));
-        handles->types = realloc(handles->types, handles->capacity * sizeof(enum HandleType));
-        memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
-        memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
-        handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct ReadingBuffer));
-    }
+    if (handles->size == handles->capacity)
+        _extend(handles);
 
     handles->pfds[handles->size].fd = fd;
     handles->pfds[handles->size].events = events;
@@ -127,7 +132,7 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
                                     struct PollingHandles* all_handles, int* running, size_t* write_amount) {
     size_t read_size;
 
-    read_size = recv(client_sock, client_message, 2000, 0);
+    read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 
     if (read_size > 0) {
         ReadingBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
@@ -159,7 +164,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     fcntl(socket_desc, F_SETFL, fcntl(socket_desc, F_GETFL, 0) | O_NONBLOCK);
 
     size_t write_amount = 0;
-    char client_message[2000];
+    char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE];
 
     int running = 1;
 
