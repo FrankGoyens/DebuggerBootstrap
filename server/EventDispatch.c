@@ -10,6 +10,11 @@
 #include <poll.h>
 #include <sys/socket.h>
 
+#include "Bootstrapper.h"
+#include "ProjectDescription.h"
+#include "ProjectDescription_json.h"
+#include "protocol/Protocol.h"
+
 #define CLIENT_MESSAGE_READ_BUFFER_SIZE 128
 
 enum HandleType {
@@ -128,8 +133,44 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
+// This will remove the data that is successfully interpreted
+static void InterpretClientData(struct ReadingBuffer* reading_buffer, struct PollingHandles* all_handles,
+                                struct Bootstrapper* bootstrapper) {
+    size_t json_offset;
+    switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
+        const size_t null_terminator_index =
+            FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size);
+        if (null_terminator_index < reading_buffer->size) {
+            struct ProjectDescription description;
+            if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
+                printf("I got a valid project description!\n");
+                ReadingBufferTrimLeft(reading_buffer, null_terminator_index);
+                ReceiveNewProjectDescription(bootstrapper, &description);
+            }
+        }
+        break;
+    }
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST:
+        printf("Got a subscribe request\n");
+        ReadingBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        break;
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE:
+        printf("Got a subscribe response, that's odd because I'm the server\n");
+        ReadingBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        break;
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE:
+        break;
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN:
+        printf("Got complete nonsense, clearing the buffer...\n");
+        ReadingBufferTrimLeft(reading_buffer, reading_buffer->size);
+        break;
+    }
+}
+
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
-                                    struct PollingHandles* all_handles, int* running, size_t* write_amount) {
+                                    struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, int* running,
+                                    size_t* write_amount) {
     size_t read_size;
 
     read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
@@ -142,6 +183,7 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
         }
         printf("I will write something now %lu\n", ++*write_amount);
         write(client_sock, client_message, strlen(client_message));
+        InterpretClientData(&all_handles->reading_buffers[fd_index], all_handles, bootstrapper);
     } else if (read_size < 0) {
         fprintf(stderr, "recv failed\n");
         Erase(all_handles, fd_index);
@@ -151,23 +193,48 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
     }
 }
 
+static int StartGDBServer(void* userdata) { return 1; }
+static int StopGDBServer(void* userdata) { return 1; }
+static int FileExists(const char* file, void* userdata) { return 1; }
+static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, void* userdata) {
+    const char* dummy_hash = "abcd";
+    *hash_size = strlen(dummy_hash);
+    *hash = (char*)malloc(*hash_size + 1);
+    strcpy(*hash, dummy_hash);
+}
+
+static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) {
+    bootstrapper->userdata = userdata;
+    bootstrapper->startGDBServer = &StartGDBServer;
+    bootstrapper->stopGDBServer = &StopGDBServer;
+    bootstrapper->fileExists = &FileExists;
+    bootstrapper->calculateHash = &CalculateFileHash;
+    BootstrapperInit(bootstrapper);
+}
+
+static void CreatePollingHandlesStartingWithServerSocket(struct PollingHandles* all_handles, int socket_desc) {
+    Init(all_handles);
+
+    Append(all_handles, socket_desc, POLLIN, HANDLE_TYPE_SERVER_SOCKET);
+
+    fcntl(socket_desc, F_SETFL, fcntl(socket_desc, F_GETFL, 0) | O_NONBLOCK);
+}
+
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     listen(socket_desc, 3);
 
     printf("Waiting for incoming connections\n");
 
     struct PollingHandles all_handles;
-    Init(&all_handles);
-
-    Append(&all_handles, socket_desc, POLLIN, HANDLE_TYPE_SERVER_SOCKET);
-
-    fcntl(socket_desc, F_SETFL, fcntl(socket_desc, F_GETFL, 0) | O_NONBLOCK);
+    CreatePollingHandlesStartingWithServerSocket(&all_handles, socket_desc);
 
     size_t write_amount = 0;
     char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE];
 
-    int running = 1;
+    struct Bootstrapper bootstrapper;
+    BindBootstrapper(&bootstrapper, NULL);
 
+    int running = 1;
     while (running) {
         int ready = poll(all_handles.pfds, all_handles.size, 1000);
         if (ready > 0) {
@@ -180,7 +247,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
                     case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
                     case HANDLE_TYPE_CLIENT_SOCKET:
                         RecieveClientSocketData(all_handles.pfds[fd_index].fd, fd_index, client_message, &all_handles,
-                                                &running, &write_amount);
+                                                &bootstrapper, &running, &write_amount);
 
                         break;
                     }
@@ -195,6 +262,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
         }
     }
     Deinit(&all_handles);
+    BootstrapperDeinit(&bootstrapper);
 }
 
 void StartEventDispatch(int port) {

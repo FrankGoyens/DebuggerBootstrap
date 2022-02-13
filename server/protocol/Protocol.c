@@ -6,8 +6,6 @@
 #include "../ProjectDescription.h"
 #include "../ProjectDescription_json.h"
 
-#define PACKET_HEADER_SIZE 2
-
 void MakeProjectDescriptionPacket(struct ProjectDescription* description, char** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
 
@@ -28,10 +26,12 @@ void MakeProjectDescriptionPacket(struct ProjectDescription* description, char**
 enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const char* packet, size_t packet_size,
                                                           size_t* json_part_offset) {
     if (packet_size < PACKET_HEADER_SIZE)
-        return DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN;
+        return DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE;
     if (packet[0] != DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION)
         return DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN;
     *json_part_offset = PACKET_HEADER_SIZE;
+    if (packet[1] >= DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN)
+        return DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN;
     return packet[1];
 }
 
