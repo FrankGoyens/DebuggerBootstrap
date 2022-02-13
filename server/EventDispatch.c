@@ -16,9 +16,50 @@ enum HandleType {
     HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION // This client socket will recieve status updates as well
 };
 
+struct ReadingBuffer {
+    char* data;
+    size_t size;
+    size_t capacity;
+};
+
+#define READING_BUFFER_INITIAL_SIZE 16
+
+void ReadingBufferInit(struct ReadingBuffer* buffer) {
+    buffer->size = 0;
+    buffer->capacity = READING_BUFFER_INITIAL_SIZE;
+    buffer->data = (char*)malloc(READING_BUFFER_INITIAL_SIZE);
+}
+
+void ReadingBufferDeinit(struct ReadingBuffer* buffer) { free(buffer->data); }
+
+void _readingBufferExtend(struct ReadingBuffer* buffer, size_t minimal_new_size) {
+    buffer->data = (char*)realloc(buffer->data, minimal_new_size * 2);
+}
+
+void ReadingBufferAppend(struct ReadingBuffer* buffer, const char* new_data, size_t new_data_size) {
+    if (buffer->size + new_data_size >= buffer->capacity)
+        _readingBufferExtend(buffer, buffer->size + new_data_size);
+
+    memcpy(buffer->data + buffer->size, new_data, new_data_size);
+    buffer->size += new_data_size;
+}
+
+void ReadingBufferTrimLeft(struct ReadingBuffer* buffer, size_t trim_amount) {
+    if (trim_amount = buffer->size) {
+        buffer->size = 0;
+        return;
+    }
+
+    const size_t remainder = buffer->size - trim_amount;
+    for (size_t i = 0; i < remainder; ++i)
+        buffer->data[i] = buffer->data[i + trim_amount];
+    buffer->size = trim_amount;
+}
+
 struct PollingHandles {
     struct pollfd* pfds;
     enum HandleType* types;
+    struct ReadingBuffer* reading_buffers;
     size_t size, capacity;
 };
 
@@ -27,11 +68,15 @@ static void Init(struct PollingHandles* handles) {
     handles->capacity = 1;
     handles->pfds = (struct pollfd*)calloc(sizeof(struct pollfd), handles->capacity);
     handles->types = (enum HandleType*)calloc(sizeof(enum HandleType), handles->capacity);
+    handles->reading_buffers = (struct ReadingBuffer*)malloc(sizeof(struct ReadingBuffer) * handles->capacity);
 }
 
 static void Deinit(struct PollingHandles* handles) {
     free(handles->pfds);
     free(handles->types);
+    for (size_t i = 0; i < handles->capacity; ++i)
+        ReadingBufferDeinit(&handles->reading_buffers[i]);
+    free(handles->reading_buffers);
 }
 
 static void Append(struct PollingHandles* handles, int fd, short events, enum HandleType type) {
@@ -41,11 +86,13 @@ static void Append(struct PollingHandles* handles, int fd, short events, enum Ha
         handles->types = realloc(handles->types, handles->capacity * sizeof(enum HandleType));
         memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
         memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
+        handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct ReadingBuffer));
     }
 
     handles->pfds[handles->size].fd = fd;
     handles->pfds[handles->size].events = events;
     handles->types[handles->size] = type;
+    ReadingBufferInit(&handles->reading_buffers[handles->size]);
     ++handles->size;
 }
 
@@ -83,6 +130,7 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
     read_size = recv(client_sock, client_message, 2000, 0);
 
     if (read_size > 0) {
+        ReadingBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
         if (client_message[0] == 'q') {
             printf("exit requested\n");
             *running = 0;
