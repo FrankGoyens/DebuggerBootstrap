@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <json.h>
 
@@ -25,6 +26,38 @@ static int display_info(const char* fpath, const struct stat* sb, int tflag, str
 }
 
 void CalculateSHA1Hash(const char* data, size_t dataLength, unsigned char* hash) { SHA1(data, dataLength, hash); }
+
+void StartGDBServerProcess() {
+    int pipefd[2];
+    int pipefd_err[2];
+    int p1 = pipe(pipefd);
+    int p2 = pipe(pipefd_err);
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd_err[1], STDERR_FILENO);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        close(pipefd_err[0]);
+        close(pipefd_err[1]);
+        char* args[] = {"gdbserver", "--help", NULL};
+        char* env[] = {NULL};
+        execve("/usr/bin/gdbserver", args, env);
+    } else {
+        close(pipefd[1]);
+        close(pipefd_err[1]);
+        printf("parent is sleeping...\n");
+
+        char buffer[512];
+
+        int bytes = 0;
+        int bytes_err = 0;
+        while ((bytes = read(pipefd[0], buffer, sizeof(buffer))) > 0)
+            printf("Output: (%.*s)\n", bytes, buffer);
+        while ((bytes_err = read(pipefd_err[0], buffer, sizeof(buffer))) > 0)
+            printf("Output (err): (%.*s)\n", bytes, buffer);
+    }
+}
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -48,7 +81,8 @@ int main(int argc, char** argv) {
     }
     printf("\n");
 
-    StartEventDispatch(1337);
+    StartGDBServerProcess();
+    // StartEventDispatch(1337);
 
     return 0;
 }
