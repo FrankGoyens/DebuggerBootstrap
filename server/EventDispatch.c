@@ -1,9 +1,11 @@
 #include "EventDispatch.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <wait.h>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -21,6 +23,10 @@ enum HandleType {
     HANDLE_TYPE_SERVER_SOCKET,
     HANDLE_TYPE_CLIENT_SOCKET,
     HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION // This client socket will recieve status updates as well
+};
+
+struct BootstrapperUserdata {
+    int gdbserver_pid;
 };
 
 struct ReadingBuffer {
@@ -193,9 +199,81 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
     }
 }
 
-static int StartGDBServer(void* userdata) { return 1; }
-static int StopGDBServer(void* userdata) { return 1; }
-static int FileExists(const char* file, void* userdata) { return 1; }
+static int StartGDBServer(void* userdata) {
+    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
+    if (bootstrapper_userdata) {
+        if (bootstrapper_userdata->gdbserver_pid != -1)
+            return 1; // Already running
+    }
+
+    int pipefd[2];
+    int pipefd_err[2];
+    int p1 = pipe(pipefd);
+    int p2 = pipe(pipefd_err);
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd_err[1], STDERR_FILENO);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        close(pipefd_err[0]);
+        close(pipefd_err[1]);
+        char* args[] = {"gdbserver", "--help", NULL};
+        char* env[] = {NULL};
+        execve("/usr/bin/gdbserver", args, env);
+    } else {
+        close(pipefd[1]);
+        close(pipefd_err[1]);
+        printf("parent is sleeping...\n");
+
+        char buffer[512];
+
+        int bytes = 0;
+        int bytes_err = 0;
+        while ((bytes = read(pipefd[0], buffer, sizeof(buffer))) > 0)
+            printf("Output: (%.*s)\n", bytes, buffer);
+        while ((bytes_err = read(pipefd_err[0], buffer, sizeof(buffer))) > 0)
+            printf("Output (err): (%.*s)\n", bytes, buffer);
+    };
+
+    if (bootstrapper_userdata) {
+        bootstrapper_userdata->gdbserver_pid = pid;
+    }
+
+    return 1;
+}
+
+#define STOPPING_WAIT_TIME_MS 1000
+#define SLEEP_WAIT_TIME_MS 10
+#define MAX_WAIT_LOOPS (STOPPING_WAIT_TIME_MS / SLEEP_WAIT_TIME_MS)
+
+// First signals SIGTERM, then waits up to STOPPING_WAIT_TIME_MS for GDB server to stop
+// When the GDB server has not stopped after STOPPING_WAIT_TIME_MS, SIGKILL is sent, and it is assumed that the GDB
+// server will stop
+static int StopGDBServer(void* userdata) {
+    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
+    if (bootstrapper_userdata) {
+        if (bootstrapper_userdata->gdbserver_pid == -1)
+            return 1;
+        kill(bootstrapper_userdata->gdbserver_pid, SIGTERM);
+        int status;
+        int loops = 0;
+        do {
+            waitpid(bootstrapper_userdata->gdbserver_pid, &status, WNOHANG);
+
+            sleep(SLEEP_WAIT_TIME_MS);
+            ++loops;
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && loops <= MAX_WAIT_LOOPS);
+        if (loops == MAX_WAIT_LOOPS)
+            kill(bootstrapper_userdata->gdbserver_pid, SIGKILL);
+        bootstrapper_userdata->gdbserver_pid = -1;
+        return 1;
+    }
+    return 0;
+}
+
+static int FileExists(const char* file, void* userdata) { return access(file, F_OK) == 0; }
+
 static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, void* userdata) {
     const char* dummy_hash = "abcd";
     *hash_size = strlen(dummy_hash);
