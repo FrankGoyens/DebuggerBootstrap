@@ -10,6 +10,7 @@ set(DebuggerBootstrap_Headers
 	ProjectDescription_json.h
 	EventDispatch.h
 	Bootstrapper.h
+	FileHasher.h
 
 	protocol/Protocol.h
 )
@@ -20,6 +21,7 @@ set(DebuggerBootstrap_Sources
 	ProjectDescription_json.c
 	EventDispatch.c
 	Bootstrapper.c
+	FileHasher.c
 
 	protocol/Protocol.c
 )

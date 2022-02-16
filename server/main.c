@@ -15,6 +15,8 @@
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
 
+#include "FileHasher.h"
+
 static _Thread_local struct DynamicStringArray ftw_result_store;
 
 static int display_info(const char* fpath, const struct stat* sb, int tflag, struct FTW* ftwbuf) {
@@ -49,7 +51,13 @@ int main(int argc, char** argv) {
     }
     printf("\n");
 
-    StartGDBServerProcess();
+    char* file_hash;
+    size_t hash_length;
+    FileHasher_Do(argv[0], &file_hash, &hash_length);
+    printf("File hash: %s\n", file_hash);
+    free(file_hash);
+
+    // StartGDBServerProcess();
     // StartEventDispatch(1337);
 
     return 0;
