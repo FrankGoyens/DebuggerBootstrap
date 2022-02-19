@@ -4,12 +4,9 @@
 #include <string.h>
 
 #include "../ProjectDescription.h"
-#include "../ProjectDescription_json.h"
 
-void MakeProjectDescriptionPacket(struct ProjectDescription* description, char** packet, size_t* packet_size) {
+void MakeProjectDescriptionPacket(const char* project_description_json_string, char** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
-
-    char* project_description_json_string = ProjectDescriptionDumpToJSON(description);
 
     size_t json_length = strlen(project_description_json_string) + 1;
     *packet_size = PACKET_HEADER_SIZE * sizeof(uint8_t) + json_length;
@@ -19,8 +16,6 @@ void MakeProjectDescriptionPacket(struct ProjectDescription* description, char**
     packet_content[0] = version;
     packet_content[1] = DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION;
     memcpy(packet_content + PACKET_HEADER_SIZE, project_description_json_string, json_length);
-
-    free(project_description_json_string);
 }
 
 enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const char* packet, size_t packet_size,

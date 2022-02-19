@@ -24,7 +24,9 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
     char* packet;
     size_t packet_size;
 
-    MakeProjectDescriptionPacket(&given_description, &packet, &packet_size);
+    char* given_project_description_json_string = ProjectDescriptionDumpToJSON(&given_description);
+    MakeProjectDescriptionPacket(given_project_description_json_string, &packet, &packet_size);
+    free(given_project_description_json_string);
     ProjectDescriptionDeinit(&given_description);
 
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION, packet[0]);

@@ -8,7 +8,7 @@ struct ProjectDescription;
 #define DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION 0x1
 #define PACKET_HEADER_SIZE 2
 
-void MakeProjectDescriptionPacket(struct ProjectDescription*, char** packet, size_t* packet_size);
+void MakeProjectDescriptionPacket(const char* project_description_json_string, char** packet, size_t* packet_size);
 
 enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE {
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION = 0,
