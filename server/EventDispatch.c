@@ -1,5 +1,6 @@
 #include "EventDispatch.h"
 
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -388,6 +389,16 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     BootstrapperDeinit(&bootstrapper);
 }
 
+static void ReportSocketPort(int socket_desc) {
+    struct sockaddr_in server;
+    socklen_t length;
+
+    if (getsockname(socket_desc, (struct sockaddr*)&server, &length) == 0)
+        printf("Server socket running on port: %d\n", ntohs(server.sin_port));
+    else
+        fprintf(stderr, "Something went wrong retrieving server socket name: %s\n", strerror(errno));
+}
+
 void StartEventDispatch(int port) {
     int socket_desc;
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
@@ -406,6 +417,8 @@ void StartEventDispatch(int port) {
         fprintf(stderr, "bind failed. Error\n");
         exit(1);
     }
+
+    ReportSocketPort(socket_desc);
 
     StartRecievingData(socket_desc, &server);
 }

@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         printf("\t(port will be determined and reported later)\n");
     printf("GDBServer binary that will be used: %s\n", arguments.gdbserver_binary);
 
-    StartEventDispatch(1337);
+    StartEventDispatch(arguments.port);
 
     return 0;
 }
