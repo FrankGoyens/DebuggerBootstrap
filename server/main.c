@@ -2,20 +2,11 @@
 #define _GNU_SOURCE
 
 #include <ftw.h>
-#include <openssl/sha.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-
-#include <json.h>
 
 #include "DynamicStringArray.h"
 #include "EventDispatch.h"
-#include "ProjectDescription.h"
-#include "ProjectDescription_json.h"
-
-#include "FileHasher.h"
 
 static _Thread_local struct DynamicStringArray ftw_result_store;
 
@@ -26,8 +17,6 @@ static int display_info(const char* fpath, const struct stat* sb, int tflag, str
         return FTW_SKIP_SUBTREE;
     return FTW_CONTINUE;
 }
-
-void CalculateSHA1Hash(const char* data, size_t dataLength, unsigned char* hash) { SHA1(data, dataLength, hash); }
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -42,14 +31,6 @@ int main(int argc, char** argv) {
     DynamicStringArrayDeinit(&ftw_result_store);
 
     const char* message = "hello, omg it's c time\n";
-
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    CalculateSHA1Hash(message, strlen(message), hash);
-    printf("%s\n", message);
-    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-        printf("%x", hash[i]);
-    }
-    printf("\n");
 
     // StartGDBServerProcess();
     StartEventDispatch(1337);
