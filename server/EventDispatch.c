@@ -188,7 +188,7 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
             *running = 0;
         }
         printf("I will write something now %lu\n", ++*write_amount);
-        write(client_sock, client_message, strlen(client_message));
+        write(client_sock, client_message, read_size);
         InterpretClientData(&all_handles->reading_buffers[fd_index], all_handles, bootstrapper);
     } else if (read_size < 0) {
         fprintf(stderr, "recv failed\n");

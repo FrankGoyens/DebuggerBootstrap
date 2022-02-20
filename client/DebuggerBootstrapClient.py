@@ -1,7 +1,8 @@
 import protocol.native_protocol as proto
 import socket
+import FileHasher
 
-print("I am the client, hello")
+print(FileHasher.calculate_file_hash("/usr/bin/cmake"))
 
 input_json = r'{"executable_name":"test_exe", "executable_hash": "abc", "link_dependencies_for_executable": [], "link_dependencies_for_executable_hashes": []}'
 packet = proto.make_project_description_packet(input_json) 
