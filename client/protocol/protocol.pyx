@@ -1,19 +1,14 @@
 from libc.stddef cimport size_t
+from libc.stdint cimport uint8_t
+from libc.stdlib cimport free
 cimport cprotocol
 
-cdef class ProjectDescription:
-    cdef cprotocol.ProjectDescription* description;
-
-    def __cinit__(self):
-        pass
-
-    def __init__(self, executable_name, executable_hash, link_dependencies, link_dependencies_hashes):
-        pass
-
-    cdef const char* to_json(self):
-        pass
-
-def make_project_description_packet(ProjectDescription description):
-    cdef char* packet
+def make_project_description_packet(description_json):
+    cdef bytes json_bytes = description_json.encode("UTF-8")
+    cdef uint8_t* packet
     cdef size_t packet_size
-    cprotocol.MakeProjectDescriptionPacket(description.to_json(), &packet, &packet_size)
+    cprotocol.MakeProjectDescriptionPacket(json_bytes, &packet, &packet_size)
+    cdef bytes py_packet = bytes([packet[i] for i in range(0, packet_size)])
+    free(packet)
+    return py_packet
+

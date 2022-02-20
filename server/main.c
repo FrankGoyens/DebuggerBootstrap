@@ -51,14 +51,8 @@ int main(int argc, char** argv) {
     }
     printf("\n");
 
-    char* file_hash;
-    size_t hash_length;
-    FileHasher_Do(argv[0], &file_hash, &hash_length);
-    printf("File hash: %s\n", file_hash);
-    free(file_hash);
-
     // StartGDBServerProcess();
-    // StartEventDispatch(1337);
+    StartEventDispatch(1337);
 
     return 0;
 }

@@ -177,7 +177,7 @@ static void InterpretClientData(struct ReadingBuffer* reading_buffer, struct Pol
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
                                     struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, int* running,
                                     size_t* write_amount) {
-    size_t read_size;
+    int read_size;
 
     read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 

@@ -21,7 +21,7 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
     char* given_description_json = ProjectDescriptionDumpToJSON(&given_description);
     const size_t given_json_size = strlen(given_description_json) + 1;
 
-    char* packet;
+    uint8_t* packet;
     size_t packet_size;
 
     char* given_project_description_json_string = ProjectDescriptionDumpToJSON(&given_description);
@@ -31,7 +31,7 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION, packet[0]);
     EXPECT_EQ(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION, packet[1]);
-    EXPECT_EQ(std::string(given_description_json) + '\0', std::string(&packet[2], given_json_size));
+    EXPECT_EQ(std::string(given_description_json) + '\0', std::string((char*)&packet[2], given_json_size));
 
     free(given_description_json);
 
@@ -42,7 +42,7 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
               DecodePacket(packet, packet_size, &created_json_part_offset));
 
     ProjectDescription created_decoded_description;
-    EXPECT_TRUE(ProjectDescriptionLoadFromJSON(packet + created_json_part_offset, &created_decoded_description));
+    EXPECT_TRUE(ProjectDescriptionLoadFromJSON((char*)(packet + created_json_part_offset), &created_decoded_description));
     EXPECT_EQ(std::string("DebuggerBootstrap"), created_decoded_description.executable_name);
     ASSERT_EQ(3u, created_decoded_description.link_dependencies_for_executable.size);
     EXPECT_EQ(std::string("first.so"), created_decoded_description.link_dependencies_for_executable.data[0]);
@@ -54,7 +54,7 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
 }
 
 TEST(testProtocol, MakeAndDecodeSubscriptionResponsePacket) {
-    char* created_packet;
+    uint8_t* created_packet;
     size_t created_packet_size;
     MakeRequestSubscriptionPacket(&created_packet, &created_packet_size);
 
