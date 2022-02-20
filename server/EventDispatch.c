@@ -272,7 +272,8 @@ static int StopGDBServer(void* userdata) {
     return 0;
 }
 
-static int FileExists(const char* file, void* userdata) { return access(file, F_OK) == 0; }
+static int FileExists(const char* file) { return access(file, F_OK) == 0; }
+static int FileExists_Bound(const char* file, void* userdata) { return FileExists(file); }
 
 static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, void* userdata) {
     const char* dummy_hash = "abcd";
@@ -285,7 +286,7 @@ static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) 
     bootstrapper->userdata = userdata;
     bootstrapper->startGDBServer = &StartGDBServer;
     bootstrapper->stopGDBServer = &StopGDBServer;
-    bootstrapper->fileExists = &FileExists;
+    bootstrapper->fileExists = &FileExists_Bound;
     bootstrapper->calculateHash = &CalculateFileHash;
     BootstrapperInit(bootstrapper);
 }
@@ -296,6 +297,48 @@ static void CreatePollingHandlesStartingWithServerSocket(struct PollingHandles* 
     Append(all_handles, socket_desc, POLLIN, HANDLE_TYPE_SERVER_SOCKET);
 
     fcntl(socket_desc, F_SETFL, fcntl(socket_desc, F_GETFL, 0) | O_NONBLOCK);
+}
+
+static void ValidateMissingFiles(struct Bootstrapper* bootstrapper) {
+    struct DynamicStringArray missing;
+    DynamicStringArrayInit(&missing);
+    ReportMissingFiles(bootstrapper, &missing);
+
+    for (int i = 0; i < missing.size; ++i) {
+        if (FileExists(missing.data[i]))
+            UpdateFileActualHash(bootstrapper, missing.data[i]);
+    }
+    DynamicStringArrayDeinit(&missing);
+}
+
+static void ValidateMismatchingHashes(struct Bootstrapper* bootstrapper) {
+
+    struct DynamicStringArray files, actual_hashes, wanted_hashes;
+    DynamicStringArrayInit(&files);
+    DynamicStringArrayInit(&actual_hashes);
+    DynamicStringArrayInit(&wanted_hashes);
+    ReportWantedVsActualHashes(bootstrapper, &files, &actual_hashes, &wanted_hashes);
+
+    struct DynamicStringArray files_to_update;
+    DynamicStringArrayInit(&files_to_update);
+
+    for (int i = 0; i < files.size; ++i) {
+        if (strcmp(actual_hashes.data[i], wanted_hashes.data[i]) != 0)
+            DynamicStringArrayAppend(&files_to_update, files.data[i]);
+    }
+
+    UpdateFileActualHashes(bootstrapper, &files_to_update);
+
+    DynamicStringArrayDeinit(&files_to_update);
+
+    DynamicStringArrayDeinit(&files);
+    DynamicStringArrayDeinit(&actual_hashes);
+    DynamicStringArrayDeinit(&wanted_hashes);
+}
+
+static void ValidateMismatches(struct Bootstrapper* bootstrapper) {
+    ValidateMissingFiles(bootstrapper);
+    ValidateMismatchingHashes(bootstrapper);
 }
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
@@ -338,6 +381,8 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
         } else {
             printf("I do nothing this time %lu\n", ++write_amount);
         }
+
+        ValidateMismatches(&bootstrapper);
     }
     Deinit(&all_handles);
     BootstrapperDeinit(&bootstrapper);

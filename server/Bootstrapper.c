@@ -201,11 +201,8 @@ static int FindFile(const char* file, struct DynamicStringArray* files, size_t* 
     return 0;
 }
 
-void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_name) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
-    if (!internal || !ProjectIsLoaded(internal))
-        return;
-
+static void UpdateFileActualHashWithoutGDBStartCheck(struct Bootstrapper* bootstrapper,
+                                                     struct BootstrapperInternal* internal, const char* file_name) {
     if (!bootstrapper->fileExists(file_name, bootstrapper->userdata))
         return;
 
@@ -225,6 +222,28 @@ void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_na
         bootstrapper->calculateHash(file_name, &internal->hashesForExisting.data[find_index], &hash_size,
                                     bootstrapper->userdata);
     }
+}
+
+void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_name) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal || !ProjectIsLoaded(internal))
+        return;
+
+    UpdateFileActualHashWithoutGDBStartCheck(bootstrapper, internal, file_name);
+
+    if (ShouldStartGDBServer(internal))
+        Start(bootstrapper, internal);
+    else
+        Stop(bootstrapper, internal);
+}
+
+void UpdateFileActualHashes(struct Bootstrapper* bootstrapper, const struct DynamicStringArray* file_names) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal || !ProjectIsLoaded(internal))
+        return;
+
+    for (int i = 0; i < file_names->size; ++i)
+        UpdateFileActualHashWithoutGDBStartCheck(bootstrapper, internal, file_names->data[i]);
 
     if (ShouldStartGDBServer(internal))
         Start(bootstrapper, internal);

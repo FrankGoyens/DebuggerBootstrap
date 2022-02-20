@@ -34,4 +34,7 @@ void ReportWantedVsActualHashes(const struct Bootstrapper*, struct DynamicString
 // The actual hash is calculated for the given file, if the file is present in the project description
 // Will trigger a StartGDBServer when every file exists and matches
 void UpdateFileActualHash(struct Bootstrapper*, const char* file_name);
+// Same as UpdateFileActualHash, except checking whether the GDBServer should start happens after all files have been
+// processed
+void UpdateFileActualHashes(struct Bootstrapper*, const struct DynamicStringArray* file_names);
 void IndicateRemovedFile(struct Bootstrapper*, const char* file_name);

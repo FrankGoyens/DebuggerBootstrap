@@ -42,7 +42,8 @@ TEST(testProtocol, MakeAndDecodeProjectDescriptionPacket) {
               DecodePacket(packet, packet_size, &created_json_part_offset));
 
     ProjectDescription created_decoded_description;
-    EXPECT_TRUE(ProjectDescriptionLoadFromJSON((char*)(packet + created_json_part_offset), &created_decoded_description));
+    EXPECT_TRUE(
+        ProjectDescriptionLoadFromJSON((char*)(packet + created_json_part_offset), &created_decoded_description));
     EXPECT_EQ(std::string("DebuggerBootstrap"), created_decoded_description.executable_name);
     ASSERT_EQ(3u, created_decoded_description.link_dependencies_for_executable.size);
     EXPECT_EQ(std::string("first.so"), created_decoded_description.link_dependencies_for_executable.data[0]);
