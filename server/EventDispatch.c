@@ -149,7 +149,7 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
 
     printf("Connection accepted\n");
 
-    Append(all_handles, client_sock, POLLIN, HANDLE_TYPE_CLIENT_SOCKET);
+    Append(all_handles, client_sock, POLLIN | POLLOUT, HANDLE_TYPE_CLIENT_SOCKET);
 
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
@@ -158,9 +158,11 @@ static void InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_
                                                   struct Bootstrapper* bootstrapper, size_t json_offset) {
     if (json_offset > reading_buffer->size)
         return;
-    const size_t null_terminator_index =
-        FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset) + json_offset;
-    if (null_terminator_index < reading_buffer->size) {
+    size_t null_terminator_index;
+    if (FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset,
+                           &null_terminator_index)) {
+        null_terminator_index += json_offset;
+
         struct ProjectDescription description;
         if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
             printf("I got a valid project description!\n");
@@ -194,10 +196,16 @@ static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_in
         all_handles->types[fd_index] = HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION;
         DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
         break;
-    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE:
-        printf("Got a subscribe response, that's odd because I'm the server\n");
-        DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE: {
+        size_t null_terminator_index;
+        if (FindNullTerminator(&reading_buffer->data[PACKET_HEADER_SIZE], reading_buffer->size - PACKET_HEADER_SIZE,
+                               &null_terminator_index)) {
+            null_terminator_index += PACKET_HEADER_SIZE;
+            printf("Got a subscribe response, that's odd because I'm the server\n");
+            DynamicBufferTrimLeft(reading_buffer, null_terminator_index);
+        }
         break;
+    }
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE:
         break;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN:
@@ -374,6 +382,27 @@ static void ValidateMismatches(struct Bootstrapper* bootstrapper) {
     ValidateMismatchingHashes(bootstrapper);
 }
 
+static void PutBroadcastMessagesInSubscriptionBuffer(struct DynamicStringArray* subscriber_broadcast,
+                                                     struct DynamicBuffer* subscription_buffer) {
+    for (int i = 0; i < subscriber_broadcast->size; ++i) {
+        uint8_t* header;
+        size_t packet_size;
+        MakeSubscriptionResponsePacketHeader(&header, &packet_size);
+        DynamicBufferAppend(subscription_buffer, (char*)&header, packet_size);
+        free(header);
+        DynamicBufferAppend(subscription_buffer, subscriber_broadcast->data[i],
+                            strlen(subscriber_broadcast->data[i]) + 1);
+    }
+}
+
+static void PutBroadcastMessagesInSubscriptionBuffers(struct PollingHandles* all_handles,
+                                                      struct DynamicStringArray* subscriber_broadcast) {
+    for (int i = 0; i < all_handles->size; ++i) {
+        if (all_handles->types[i] == HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION)
+            PutBroadcastMessagesInSubscriptionBuffer(subscriber_broadcast, &all_handles->writing_buffers[i]);
+    }
+}
+
 #define POLL_TIMEOUT_MS 1000
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
@@ -407,7 +436,22 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
                     case HANDLE_TYPE_CLIENT_SOCKET:
                         RecieveClientSocketData(all_handles.pfds[fd_index].fd, fd_index, client_message, &all_handles,
                                                 &bootstrapper, &running, &write_amount, &subscriber_broadcast);
+                        PutBroadcastMessagesInSubscriptionBuffers(&all_handles, &subscriber_broadcast);
+                        DynamicStringArrayClear(&subscriber_broadcast);
+                        break;
+                    }
+                }
+                if (all_handles.pfds[fd_index].revents & POLLOUT) {
+                    switch (all_handles.types[fd_index]) {
+                    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION: {
 
+                        size_t bytes_written =
+                            write(all_handles.pfds[fd_index].fd, all_handles.writing_buffers[fd_index].data,
+                                  all_handles.writing_buffers[fd_index].size);
+
+                        DynamicBufferTrimLeft(&all_handles.writing_buffers[fd_index], bytes_written);
+                    }
+                    default:
                         break;
                     }
                 }

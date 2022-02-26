@@ -39,18 +39,20 @@ void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size) {
     packet_content[1] = DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST;
 }
 
-void MakeSubscriptionResponsePacketHeader(char** packet, size_t* packet_size) {
+void MakeSubscriptionResponsePacketHeader(uint8_t** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
-    *packet = (char*)malloc(*packet_size);
-    char* packet_content = *packet;
+    *packet = (uint8_t*)malloc(*packet_size);
+    uint8_t* packet_content = *packet;
     packet_content[0] = version;
     packet_content[1] = DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE;
 }
 
-size_t FindNullTerminator(const char* packet, size_t packet_size) {
+int FindNullTerminator(const uint8_t* packet, size_t packet_size, size_t* position) {
     for (size_t i = 0; i < packet_size; ++i) {
-        if (packet[i] == '\0')
-            return i;
+        if (packet[i] == '\0') {
+            *position = i;
+            return 1;
+        }
     }
-    return packet_size;
+    return 0;
 }

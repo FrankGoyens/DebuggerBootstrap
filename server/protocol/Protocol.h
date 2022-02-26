@@ -24,6 +24,6 @@ enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet,
 void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size);
 // This is just a header, any human readable utf-8 content may be appended to the output stream after putting this
 // packet in the outputstream, a '\0' indicates the end of the packet
-void MakeSubscriptionResponsePacketHeader(char** packet, size_t* packet_size);
+void MakeSubscriptionResponsePacketHeader(uint8_t** packet, size_t* packet_size);
 
-size_t FindNullTerminator(const char* packet, size_t packet_size);
+int FindNullTerminator(const uint8_t* packet, size_t packet_size, size_t* position);
