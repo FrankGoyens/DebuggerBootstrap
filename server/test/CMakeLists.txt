@@ -9,6 +9,7 @@ add_executable(DebuggerBootstrapTest
 	testProjectDescription.cpp
 	testProtocol.cpp
 	testBootstrapper.cpp
+	testSubscriberUpdate.cpp
 )
 
 add_dependencies(DebuggerBootstrapTest json-c)

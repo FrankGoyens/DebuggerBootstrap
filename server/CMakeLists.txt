@@ -11,6 +11,7 @@ set(DebuggerBootstrap_Headers
 	EventDispatch.h
 	Bootstrapper.h
 	FileHasher.h
+	SubscriberUpdate.h
 
 	protocol/Protocol.h
 )
@@ -22,6 +23,7 @@ set(DebuggerBootstrap_Sources
 	EventDispatch.c
 	Bootstrapper.c
 	FileHasher.c
+	SubscriberUpdate.c
 
 	protocol/Protocol.c
 )

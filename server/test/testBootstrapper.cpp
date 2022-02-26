@@ -122,13 +122,12 @@ TEST(testBootstrapper, ReportMissingFiles) {
     ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
 
     struct DynamicStringArray created_missing_files;
+    DynamicStringArrayInit(&created_missing_files);
     ReportMissingFiles(&given_bootstrapper, &created_missing_files);
 
     ASSERT_EQ(2u, created_missing_files.size);
     EXPECT_EQ(std::string("zlib.so"), created_missing_files.data[0]);
     EXPECT_EQ(std::string("libpng.so"), created_missing_files.data[1]);
-
-    DynamicStringArrayDeinit(&created_missing_files);
 
     given_userdata.existing_files.erase(given_userdata.existing_files.find("freetype.so"));
 

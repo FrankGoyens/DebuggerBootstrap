@@ -16,6 +16,7 @@
 #include "Bootstrapper.h"
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
+#include "SubscriberUpdate.h"
 #include "protocol/Protocol.h"
 
 #define CLIENT_MESSAGE_READ_BUFFER_SIZE 128
@@ -30,35 +31,35 @@ struct BootstrapperUserdata {
     int gdbserver_pid;
 };
 
-struct ReadingBuffer {
+struct DynamicBuffer {
     char* data;
     size_t size;
     size_t capacity;
 };
 
-#define READING_BUFFER_INITIAL_SIZE 16
+#define DYNAMIC_BUFFER_INITIAL_SIZE 16
 
-void ReadingBufferInit(struct ReadingBuffer* buffer) {
+void DynamicBufferInit(struct DynamicBuffer* buffer) {
     buffer->size = 0;
-    buffer->capacity = READING_BUFFER_INITIAL_SIZE;
-    buffer->data = (char*)malloc(READING_BUFFER_INITIAL_SIZE);
+    buffer->capacity = DYNAMIC_BUFFER_INITIAL_SIZE;
+    buffer->data = (char*)malloc(DYNAMIC_BUFFER_INITIAL_SIZE);
 }
 
-void ReadingBufferDeinit(struct ReadingBuffer* buffer) { free(buffer->data); }
+void DynamicBufferDeinit(struct DynamicBuffer* buffer) { free(buffer->data); }
 
-void _readingBufferExtend(struct ReadingBuffer* buffer, size_t minimal_new_size) {
+void _dynamicBufferExtend(struct DynamicBuffer* buffer, size_t minimal_new_size) {
     buffer->data = (char*)realloc(buffer->data, minimal_new_size * 2);
 }
 
-void ReadingBufferAppend(struct ReadingBuffer* buffer, const char* new_data, size_t new_data_size) {
+void DynamicBufferAppend(struct DynamicBuffer* buffer, const char* new_data, size_t new_data_size) {
     if (buffer->size + new_data_size >= buffer->capacity)
-        _readingBufferExtend(buffer, buffer->size + new_data_size);
+        _dynamicBufferExtend(buffer, buffer->size + new_data_size);
 
     memcpy(buffer->data + buffer->size, new_data, new_data_size);
     buffer->size += new_data_size;
 }
 
-void ReadingBufferTrimLeft(struct ReadingBuffer* buffer, size_t trim_amount) {
+void DynamicBufferTrimLeft(struct DynamicBuffer* buffer, size_t trim_amount) {
     if (trim_amount = buffer->size) {
         buffer->size = 0;
         return;
@@ -73,7 +74,8 @@ void ReadingBufferTrimLeft(struct ReadingBuffer* buffer, size_t trim_amount) {
 struct PollingHandles {
     struct pollfd* pfds;
     enum HandleType* types;
-    struct ReadingBuffer* reading_buffers;
+    struct DynamicBuffer* reading_buffers;
+    struct DynamicBuffer* writing_buffers;
     size_t size, capacity;
 };
 
@@ -82,15 +84,21 @@ static void Init(struct PollingHandles* handles) {
     handles->capacity = 1;
     handles->pfds = (struct pollfd*)calloc(sizeof(struct pollfd), handles->capacity);
     handles->types = (enum HandleType*)calloc(sizeof(enum HandleType), handles->capacity);
-    handles->reading_buffers = (struct ReadingBuffer*)malloc(sizeof(struct ReadingBuffer) * handles->capacity);
+    handles->reading_buffers = (struct DynamicBuffer*)malloc(sizeof(struct DynamicBuffer) * handles->capacity);
+    handles->writing_buffers = (struct DynamicBuffer*)malloc(sizeof(struct DynamicBuffer) * handles->capacity);
+}
+
+static void FreeDynamicBufferArray(struct DynamicBuffer* dynamic_buffers, size_t n) {
+    for (size_t i = 0; i < n; ++i)
+        DynamicBufferDeinit(&dynamic_buffers[i]);
+    free(dynamic_buffers);
 }
 
 static void Deinit(struct PollingHandles* handles) {
     free(handles->pfds);
     free(handles->types);
-    for (size_t i = 0; i < handles->capacity; ++i)
-        ReadingBufferDeinit(&handles->reading_buffers[i]);
-    free(handles->reading_buffers);
+    FreeDynamicBufferArray(handles->reading_buffers, handles->capacity);
+    FreeDynamicBufferArray(handles->writing_buffers, handles->capacity);
 }
 
 static void _extend(struct PollingHandles* handles) {
@@ -99,7 +107,8 @@ static void _extend(struct PollingHandles* handles) {
     handles->types = realloc(handles->types, handles->capacity * sizeof(enum HandleType));
     memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
     memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
-    handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct ReadingBuffer));
+    handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct DynamicBuffer));
+    handles->writing_buffers = realloc(handles->writing_buffers, handles->capacity * sizeof(struct DynamicBuffer));
 }
 
 static void Append(struct PollingHandles* handles, int fd, short events, enum HandleType type) {
@@ -109,16 +118,21 @@ static void Append(struct PollingHandles* handles, int fd, short events, enum Ha
     handles->pfds[handles->size].fd = fd;
     handles->pfds[handles->size].events = events;
     handles->types[handles->size] = type;
-    ReadingBufferInit(&handles->reading_buffers[handles->size]);
+    DynamicBufferInit(&handles->reading_buffers[handles->size]);
+    DynamicBufferInit(&handles->writing_buffers[handles->size]);
     ++handles->size;
 }
 
 static void Erase(struct PollingHandles* handles, size_t at) {
     if (at < 0 || at >= handles->size)
         return;
+    DynamicBufferDeinit(&handles->reading_buffers[at]);
+    DynamicBufferDeinit(&handles->writing_buffers[at]);
     for (size_t i = at + 1; i < handles->size; ++i) {
         handles->pfds[i - 1] = handles->pfds[i];
         handles->types[i - 1] = handles->types[i];
+        handles->reading_buffers[i - 1] = handles->reading_buffers[i];
+        handles->writing_buffers[i - 1] = handles->writing_buffers[i];
     }
     --handles->size;
 }
@@ -140,60 +154,75 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
+static void InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_buffer,
+                                                  struct Bootstrapper* bootstrapper, size_t json_offset) {
+    if (json_offset > reading_buffer->size)
+        return;
+    const size_t null_terminator_index =
+        FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset) + json_offset;
+    if (null_terminator_index < reading_buffer->size) {
+        struct ProjectDescription description;
+        if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
+            printf("I got a valid project description!\n");
+            DynamicBufferTrimLeft(reading_buffer, null_terminator_index);
+            ReceiveNewProjectDescription(bootstrapper, &description);
+            ProjectDescriptionDeinit(&description);
+        }
+    }
+}
+
+static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broadcast, const char* tag,
+                                     const char* message) {
+    char* encoded_message = EncodeSubscriberUpdateMessage(tag, message);
+    DynamicStringArrayAppend(subscriber_broadcast, encoded_message);
+    free(encoded_message);
+}
+
 // This will remove the data that is successfully interpreted
-static void InterpretClientData(struct ReadingBuffer* reading_buffer, struct PollingHandles* all_handles,
-                                struct Bootstrapper* bootstrapper) {
+static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_index, struct Bootstrapper* bootstrapper,
+                                struct DynamicStringArray* subscriber_broadcast) {
+    struct DynamicBuffer* reading_buffer = &all_handles->reading_buffers[fd_index];
+
     size_t json_offset;
     switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
-    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
-        if (json_offset > reading_buffer->size)
-            break;
-        const size_t null_terminator_index =
-            FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset) + json_offset;
-        if (null_terminator_index < reading_buffer->size) {
-            struct ProjectDescription description;
-            if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
-                printf("I got a valid project description!\n");
-                ReadingBufferTrimLeft(reading_buffer, null_terminator_index);
-                ReceiveNewProjectDescription(bootstrapper, &description);
-                ProjectDescriptionDeinit(&description);
-            }
-        }
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION:
+        InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
+        AppendMessageToBroadcast(subscriber_broadcast, "PROJECT DESCRIPTION", "New project description recieved");
         break;
-    }
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST:
         printf("Got a subscribe request\n");
-        ReadingBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        all_handles->types[fd_index] = HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION;
+        DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
         break;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE:
         printf("Got a subscribe response, that's odd because I'm the server\n");
-        ReadingBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
         break;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE:
         break;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN:
         printf("Got complete nonsense, clearing the buffer...\n");
-        ReadingBufferTrimLeft(reading_buffer, reading_buffer->size);
+        DynamicBufferTrimLeft(reading_buffer, reading_buffer->size);
         break;
     }
 }
 
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
                                     struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, int* running,
-                                    size_t* write_amount) {
+                                    size_t* write_amount, struct DynamicStringArray* subscriber_broadcast) {
     int read_size;
 
     read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 
     if (read_size > 0) {
-        ReadingBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
+        DynamicBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
         if (client_message[0] == 'q') {
             printf("exit requested\n");
             *running = 0;
         }
         printf("I will write something now %lu\n", ++*write_amount);
         write(client_sock, client_message, read_size);
-        InterpretClientData(&all_handles->reading_buffers[fd_index], all_handles, bootstrapper);
+        InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast);
     } else if (read_size < 0) {
         fprintf(stderr, "recv failed\n");
         Erase(all_handles, fd_index);
@@ -345,6 +374,8 @@ static void ValidateMismatches(struct Bootstrapper* bootstrapper) {
     ValidateMismatchingHashes(bootstrapper);
 }
 
+#define POLL_TIMEOUT_MS 1000
+
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     listen(socket_desc, 3);
 
@@ -352,6 +383,9 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
     struct PollingHandles all_handles;
     CreatePollingHandlesStartingWithServerSocket(&all_handles, socket_desc);
+
+    struct DynamicStringArray subscriber_broadcast;
+    DynamicStringArrayInit(&subscriber_broadcast);
 
     size_t write_amount = 0;
     char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE];
@@ -361,7 +395,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
     int running = 1;
     while (running) {
-        int ready = poll(all_handles.pfds, all_handles.size, 1000);
+        int ready = poll(all_handles.pfds, all_handles.size, POLL_TIMEOUT_MS);
         if (ready > 0) {
             for (size_t fd_index = 0; fd_index < all_handles.size; ++fd_index) {
                 if (all_handles.pfds[fd_index].revents & POLLIN) {
@@ -372,7 +406,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
                     case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
                     case HANDLE_TYPE_CLIENT_SOCKET:
                         RecieveClientSocketData(all_handles.pfds[fd_index].fd, fd_index, client_message, &all_handles,
-                                                &bootstrapper, &running, &write_amount);
+                                                &bootstrapper, &running, &write_amount, &subscriber_broadcast);
 
                         break;
                     }
@@ -388,6 +422,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
         ValidateMismatches(&bootstrapper);
     }
+    DynamicStringArrayDeinit(&subscriber_broadcast);
     Deinit(&all_handles);
     BootstrapperDeinit(&bootstrapper);
 }
