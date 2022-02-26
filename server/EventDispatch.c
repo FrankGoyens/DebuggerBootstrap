@@ -146,14 +146,17 @@ static void InterpretClientData(struct ReadingBuffer* reading_buffer, struct Pol
     size_t json_offset;
     switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
+        if (json_offset > reading_buffer->size)
+            break;
         const size_t null_terminator_index =
-            FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size);
+            FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset) + json_offset;
         if (null_terminator_index < reading_buffer->size) {
             struct ProjectDescription description;
             if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
                 printf("I got a valid project description!\n");
                 ReadingBufferTrimLeft(reading_buffer, null_terminator_index);
                 ReceiveNewProjectDescription(bootstrapper, &description);
+                ProjectDescriptionDeinit(&description);
             }
         }
         break;
@@ -391,7 +394,8 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
 static void ReportSocketPort(int socket_desc) {
     struct sockaddr_in server;
-    socklen_t length;
+    memset(&server, 0, sizeof(struct sockaddr_in));
+    socklen_t length = sizeof(server);
 
     if (getsockname(socket_desc, (struct sockaddr*)&server, &length) == 0)
         printf("Server socket running on port: %d\n", ntohs(server.sin_port));

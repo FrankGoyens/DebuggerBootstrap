@@ -73,6 +73,7 @@ TEST(testBootstrapper, ReceiveNewProjectDescription) {
     EXPECT_TRUE(IsProjectLoaded(&given_bootstrapper));
     EXPECT_FALSE(IsGDBServerUp(&given_bootstrapper));
 
+    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
@@ -93,6 +94,8 @@ TEST(testBootstrapper, ReceiveNewProjectDescriptionTwice) {
     ASSERT_TRUE(GetProjectDescription(&given_bootstrapper));
     EXPECT_EQ(std::string("DebuggerBootstrap"), GetProjectDescription(&given_bootstrapper)->executable_name);
 
+    ProjectDescriptionDeinit(&given_first_description);
+    ProjectDescriptionDeinit(&given_second_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
@@ -135,6 +138,7 @@ TEST(testBootstrapper, ReportMissingFiles) {
     EXPECT_EQ(std::string("zlib.so"), created_missing_files.data[0]);
     EXPECT_EQ(std::string("libpng.so"), created_missing_files.data[1]);
 
+    ProjectDescriptionDeinit(&given_description);
     DynamicStringArrayDeinit(&created_missing_files);
     BootstrapperDeinit(&given_bootstrapper);
 }
@@ -191,6 +195,55 @@ TEST(testBootstrapper, ReportWantedVsActualHashes) {
     DynamicStringArrayDeinit(&created_files);
     DynamicStringArrayDeinit(&created_actual_hashes);
     DynamicStringArrayDeinit(&created_wanted_hashes);
+    ProjectDescriptionDeinit(&given_description);
+    BootstrapperDeinit(&given_bootstrapper);
+}
+
+TEST(testBootstrapper, ReportWantedVsActualHashes_OnlyOneExecutable) {
+    FakeUserdata given_userdata;
+
+    struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
+                                              &FakeStartGDBServer,
+                                              &FakeStopGDBServer,
+                                              &FakeFileExists,
+                                              &FakeCalculateHash,
+                                              NULL};
+
+    BootstrapperInit(&given_bootstrapper);
+    struct ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "test_exe", "abc");
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+
+    struct DynamicStringArray created_files, created_actual_hashes, created_wanted_hashes;
+    DynamicStringArrayInit(&created_files);
+    DynamicStringArrayInit(&created_actual_hashes);
+    DynamicStringArrayInit(&created_wanted_hashes);
+    ReportWantedVsActualHashes(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
+
+    ASSERT_EQ(0, created_files.size);
+    ASSERT_EQ(0, created_actual_hashes.size);
+    ASSERT_EQ(0, created_wanted_hashes.size);
+
+    given_userdata = {{"test_exe"}, {{"test_exe", "def"}}};
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+    ReportWantedVsActualHashes(&given_bootstrapper, &created_files, &created_actual_hashes, &created_wanted_hashes);
+
+    ASSERT_EQ(1, created_files.size);
+    ASSERT_EQ(1, created_actual_hashes.size);
+    ASSERT_EQ(1, created_wanted_hashes.size);
+
+    EXPECT_EQ(std::string("test_exe"), created_files.data[0]);
+
+    EXPECT_EQ(std::string("def"), created_actual_hashes.data[0]);
+
+    EXPECT_EQ(std::string("abc"), created_wanted_hashes.data[0]);
+
+    DynamicStringArrayDeinit(&created_files);
+    DynamicStringArrayDeinit(&created_actual_hashes);
+    DynamicStringArrayDeinit(&created_wanted_hashes);
+    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
@@ -231,6 +284,7 @@ TEST(testBootstrapper, UpdateFileActualHash) {
 
     EXPECT_TRUE(IsGDBServerUp(&given_bootstrapper));
 
+    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
@@ -257,6 +311,7 @@ TEST(testBootstrapper, UpdateFileActualHash_FileBecomesExistant) {
 
     EXPECT_TRUE(IsGDBServerUp(&given_bootstrapper));
 
+    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
 
@@ -293,5 +348,6 @@ TEST(testBootstrapper, IndicateRemovedFile) {
     UpdateFileActualHash(&given_bootstrapper, "LightSpeedFileExplorer");
     ASSERT_TRUE(IsGDBServerUp(&given_bootstrapper));
 
+    ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }

@@ -1,5 +1,6 @@
 #include "Bootstrapper.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -60,17 +61,22 @@ static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInte
     }
 }
 
+static void CalculateHashForHashArray(struct Bootstrapper* bootstrapper, const char* file,
+                                      struct DynamicStringArray* hashes) {
+    char* hash;
+    size_t hash_size = 0;
+    bootstrapper->calculateHash(file, &hash, &hash_size, bootstrapper->userdata);
+    if (hash_size > 0) {
+        DynamicStringArrayAppend(hashes, hash);
+        free(hash);
+    }
+}
+
 static void CalculateHashes(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
                             struct DynamicStringArray* hashes) {
     DynamicStringArrayClear(hashes);
     for (int i = 0; i < internal->existing.size; ++i) {
-        char* hash;
-        size_t hash_size = 0;
-        bootstrapper->calculateHash(internal->existing.data[i], &hash, &hash_size, bootstrapper->userdata);
-        if (hash_size > 0) {
-            DynamicStringArrayAppend(hashes, hash);
-            free(hash);
-        }
+        CalculateHashForHashArray(bootstrapper, internal->existing.data[i], hashes);
     }
 }
 
@@ -131,7 +137,7 @@ void ReceiveNewProjectDescription(struct Bootstrapper* bootstrapper, struct Proj
         return;
 
     ProjectDescriptionDeinit(&internal->projectDescription);
-    internal->projectDescription = *description;
+    ProjectDescriptionCopy(description, &internal->projectDescription);
 
     Stop(bootstrapper, internal);
 
@@ -162,7 +168,18 @@ void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicS
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
+    DynamicStringArrayDeinit(missing_files);
     DynamicStringArrayCopy(&internal->missing, missing_files);
+}
+
+static int FindFile(const char* file, const struct DynamicStringArray* files, size_t* position) {
+    for (int i = 0; i < files->size; ++i) {
+        if (strcmp(file, files->data[i]) == 0) {
+            *position = i;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
@@ -176,29 +193,29 @@ void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct 
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
-    DynamicStringArrayAppend(files, internal->projectDescription.executable_name);
-    for (int i = 0; i < internal->projectDescription.link_dependencies_for_executable.size; ++i) {
-        DynamicStringArrayAppend(files, internal->projectDescription.link_dependencies_for_executable.data[i]);
-    }
+    DynamicStringArrayDeinit(files);
+    DynamicStringArrayCopy(&internal->existing, files);
 
-    DynamicStringArrayAppend(wanted_hashes, internal->projectDescription.executable_hash);
-    for (int i = 0; i < internal->projectDescription.link_dependencies_for_executable_hashes.size; ++i) {
-        DynamicStringArrayAppend(wanted_hashes,
-                                 internal->projectDescription.link_dependencies_for_executable_hashes.data[i]);
+    for (int i = 0; i < files->size; ++i) {
+        size_t position;
+
+        if (strcmp(internal->projectDescription.executable_name, files->data[i]) == 0) {
+            DynamicStringArrayAppend(wanted_hashes, internal->projectDescription.executable_hash);
+            DynamicStringArrayAppend(actual_hashes, internal->projectDescription.executable_name);
+        }
+
+        if (FindFile(files->data[i], &internal->projectDescription.link_dependencies_for_executable, &position)) {
+            DynamicStringArrayAppend(
+                wanted_hashes, internal->projectDescription.link_dependencies_for_executable_hashes.data[position]);
+            DynamicStringArrayAppend(actual_hashes, internal->hashesForExisting.data[i]);
+        }
     }
 
     DynamicStringArrayDeinit(actual_hashes);
     DynamicStringArrayCopy(&internal->hashesForExisting, actual_hashes);
-}
 
-static int FindFile(const char* file, struct DynamicStringArray* files, size_t* position) {
-    for (int i = 0; i < files->size; ++i) {
-        if (strcmp(file, files->data[i]) == 0) {
-            *position = i;
-            return 1;
-        }
-    }
-    return 0;
+    if (files->size != wanted_hashes->size || files->size != actual_hashes->size)
+        fprintf(stderr, "FIXME: %s:%d -- The three arrays should have the same size\n", __FILE__, __LINE__);
 }
 
 static void UpdateFileActualHashWithoutGDBStartCheck(struct Bootstrapper* bootstrapper,

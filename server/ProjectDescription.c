@@ -27,3 +27,14 @@ void ProjectDescriptionDeinit(struct ProjectDescription* project_description) {
     DynamicStringArrayDeinit(&project_description->link_dependencies_for_executable_hashes);
     DynamicStringArrayDeinit(&project_description->executable_arguments);
 }
+
+void ProjectDescriptionCopy(const struct ProjectDescription* source, struct ProjectDescription* dest) {
+    dest->executable_name = (char*)malloc(strlen(source->executable_name) + 1);
+    strcpy(dest->executable_name, source->executable_name);
+    dest->executable_hash = (char*)malloc(strlen(source->executable_hash) + 1);
+    strcpy(dest->executable_hash, source->executable_hash);
+    DynamicStringArrayCopy(&source->executable_arguments, &dest->executable_arguments);
+    DynamicStringArrayCopy(&source->link_dependencies_for_executable, &dest->link_dependencies_for_executable);
+    DynamicStringArrayCopy(&source->link_dependencies_for_executable_hashes,
+                           &dest->link_dependencies_for_executable_hashes);
+}

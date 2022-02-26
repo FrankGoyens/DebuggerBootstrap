@@ -12,3 +12,4 @@ struct ProjectDescription {
 
 void ProjectDescriptionInit(struct ProjectDescription*, const char* executable_name, const char* executable_hash);
 void ProjectDescriptionDeinit(struct ProjectDescription*);
+void ProjectDescriptionCopy(const struct ProjectDescription* source, struct ProjectDescription* dest);
