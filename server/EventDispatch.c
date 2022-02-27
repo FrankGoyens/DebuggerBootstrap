@@ -48,7 +48,9 @@ void DynamicBufferInit(struct DynamicBuffer* buffer) {
 void DynamicBufferDeinit(struct DynamicBuffer* buffer) { free(buffer->data); }
 
 void _dynamicBufferExtend(struct DynamicBuffer* buffer, size_t minimal_new_size) {
-    buffer->data = (char*)realloc(buffer->data, minimal_new_size * 2);
+    const size_t new_size = minimal_new_size * 2;
+    buffer->data = (char*)realloc(buffer->data, new_size);
+    buffer->capacity = new_size;
 }
 
 void DynamicBufferAppend(struct DynamicBuffer* buffer, const char* new_data, size_t new_data_size) {
@@ -60,7 +62,7 @@ void DynamicBufferAppend(struct DynamicBuffer* buffer, const char* new_data, siz
 }
 
 void DynamicBufferTrimLeft(struct DynamicBuffer* buffer, size_t trim_amount) {
-    if (trim_amount = buffer->size) {
+    if (trim_amount == buffer->size) {
         buffer->size = 0;
         return;
     }
@@ -68,7 +70,7 @@ void DynamicBufferTrimLeft(struct DynamicBuffer* buffer, size_t trim_amount) {
     const size_t remainder = buffer->size - trim_amount;
     for (size_t i = 0; i < remainder; ++i)
         buffer->data[i] = buffer->data[i + trim_amount];
-    buffer->size = trim_amount;
+    buffer->size -= trim_amount;
 }
 
 struct PollingHandles {
@@ -166,7 +168,7 @@ static void InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_
         struct ProjectDescription description;
         if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
             printf("I got a valid project description!\n");
-            DynamicBufferTrimLeft(reading_buffer, null_terminator_index);
+            DynamicBufferTrimLeft(reading_buffer, null_terminator_index + 1);
             ReceiveNewProjectDescription(bootstrapper, &description);
             ProjectDescriptionDeinit(&description);
         }
