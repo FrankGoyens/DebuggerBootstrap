@@ -20,7 +20,8 @@ if __name__ == "__main__":
 
     selector = selectors.DefaultSelector()
 
-    send_buffer = proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
+    send_buffer = proto.make_subscribe_request_packet()
+    send_buffer += proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:

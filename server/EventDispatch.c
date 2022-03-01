@@ -219,10 +219,9 @@ static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_in
 
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
                                     struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, int* running,
-                                    size_t* write_amount, struct DynamicStringArray* subscriber_broadcast) {
-    int read_size;
-
-    read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
+                                    struct DynamicStringArray* subscriber_broadcast) {
+    errno = 0;
+    int read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 
     if (read_size > 0) {
         DynamicBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
@@ -230,11 +229,9 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
             printf("exit requested\n");
             *running = 0;
         }
-        printf("I will write something now %lu\n", ++*write_amount);
-        write(client_sock, client_message, read_size);
         InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast);
     } else if (read_size < 0) {
-        fprintf(stderr, "recv failed\n");
+        fprintf(stderr, "recv failed: %s (%d)\n", strerror(errno), errno);
         Erase(all_handles, fd_index);
     } else {
         printf("Client disconnected\n");
@@ -390,7 +387,7 @@ static void PutBroadcastMessagesInSubscriptionBuffer(struct DynamicStringArray* 
         uint8_t* header;
         size_t packet_size;
         MakeSubscriptionResponsePacketHeader(&header, &packet_size);
-        DynamicBufferAppend(subscription_buffer, (char*)&header, packet_size);
+        DynamicBufferAppend(subscription_buffer, (char*)header, packet_size);
         free(header);
         DynamicBufferAppend(subscription_buffer, subscriber_broadcast->data[i],
                             strlen(subscriber_broadcast->data[i]) + 1);
@@ -427,6 +424,39 @@ static void ClearPollWriteFlags(struct PollingHandles* polling_handles) {
     }
 }
 
+// Returns true when the current poll result is invalidated
+static int ReceivePollAware(struct PollingHandles* all_handles, size_t fd_index, char* client_message,
+                            struct Bootstrapper* bootstrapper, int* running,
+                            struct DynamicStringArray* subscriber_broadcast) {
+    size_t current_size = all_handles->size;
+    RecieveClientSocketData(all_handles->pfds[fd_index].fd, fd_index, client_message, all_handles, bootstrapper,
+                            running, subscriber_broadcast);
+    PutBroadcastMessagesInSubscriptionBuffers(all_handles, subscriber_broadcast);
+    DynamicStringArrayClear(subscriber_broadcast);
+    if (current_size != all_handles->size)
+        return 1;
+    return 0;
+}
+
+// Returns true when the current poll result is invalidated
+static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
+    errno = 0;
+    int bytes_written = write(all_handles->pfds[fd_index].fd, all_handles->writing_buffers[fd_index].data,
+                              all_handles->writing_buffers[fd_index].size);
+    if (bytes_written > 0)
+        DynamicBufferTrimLeft(&all_handles->writing_buffers[fd_index], bytes_written);
+    else if (bytes_written == 0) {
+        printf("Error writing: %s\n", strerror(errno));
+        Erase(all_handles, fd_index);
+        return 1;
+    } else {
+        printf("Client disconnected\n");
+        Erase(all_handles, fd_index);
+        return 1;
+    }
+    return 0;
+}
+
 #define POLL_TIMEOUT_MS 1000
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
@@ -452,31 +482,34 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
         SetPollWriteFlagsWhereWritebuffersHaveData(&all_handles, &subscriber_broadcast);
         int ready = poll(all_handles.pfds, all_handles.size, POLL_TIMEOUT_MS);
         if (ready > 0) {
-            for (size_t fd_index = 0; fd_index < all_handles.size; ++fd_index) {
+            int poll_result_invalidated = 0;
+            for (size_t fd_index = 0; fd_index < all_handles.size && !poll_result_invalidated; ++fd_index) {
                 if (all_handles.pfds[fd_index].revents & POLLIN) {
                     switch (all_handles.types[fd_index]) {
                     case HANDLE_TYPE_SERVER_SOCKET:
                         AddClientSocket(all_handles.pfds[fd_index].fd, &all_handles);
-                        break;
+                        // A new handle is added in all_handles, so further indexes might be invalid now
+                        poll_result_invalidated = 1;
+                        continue;
                     case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
-                    case HANDLE_TYPE_CLIENT_SOCKET:
-                        RecieveClientSocketData(all_handles.pfds[fd_index].fd, fd_index, client_message, &all_handles,
-                                                &bootstrapper, &running, &write_amount, &subscriber_broadcast);
-                        PutBroadcastMessagesInSubscriptionBuffers(&all_handles, &subscriber_broadcast);
-                        DynamicStringArrayClear(&subscriber_broadcast);
+                    case HANDLE_TYPE_CLIENT_SOCKET: {
+                        if (ReceivePollAware(&all_handles, fd_index, client_message, &bootstrapper, &running,
+                                             &subscriber_broadcast)) {
+                            poll_result_invalidated = 1;
+                            continue;
+                        }
                         break;
+                    }
                     }
                 }
                 if (all_handles.pfds[fd_index].revents & POLLOUT) {
                     switch (all_handles.types[fd_index]) {
-                    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION: {
-
-                        size_t bytes_written =
-                            write(all_handles.pfds[fd_index].fd, all_handles.writing_buffers[fd_index].data,
-                                  all_handles.writing_buffers[fd_index].size);
-
-                        DynamicBufferTrimLeft(&all_handles.writing_buffers[fd_index], bytes_written);
-                    }
+                    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
+                        if (WritePollAware(&all_handles, fd_index)) {
+                            poll_result_invalidated = 1;
+                            continue;
+                        }
+                        break;
                     default:
                         break;
                     }
