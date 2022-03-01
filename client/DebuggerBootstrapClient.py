@@ -20,22 +20,29 @@ if __name__ == "__main__":
 
     selector = selectors.DefaultSelector()
 
-    packet = proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
+    send_buffer = proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.connect((args.HOST, args.PORT))
+            connected = True
             s.setblocking(False)
             selector.register(s, selectors.EVENT_READ | selectors.EVENT_WRITE, data=None)
-            sent = 0
-            while True:
-                events= selector.select(timeout=1)
+            while connected:
+                events = selector.select(timeout=1)
                 for key, mask in events:
-                    if mask & selectors.EVENT_WRITE and sent < 5:
-                        s.sendall(packet)
-                        sent += 1
+                    if mask & selectors.EVENT_WRITE:
+                        sent_bytes = s.send(send_buffer)
+                        send_buffer = send_buffer[sent_bytes:]
+                        if not send_buffer:
+                            selector.modify(s, selectors.EVENT_READ)
                     if mask &selectors.EVENT_READ:
-                        print(s.recv(1024))
+                        message = s.recv(1024)
+                        if not message:
+                            print("Connection to server is lost")
+                            connected = False
+                        print(message)
+                print("and another")
         except OverflowError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)

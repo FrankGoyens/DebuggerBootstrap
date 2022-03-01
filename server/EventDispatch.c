@@ -151,7 +151,7 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
 
     printf("Connection accepted\n");
 
-    Append(all_handles, client_sock, POLLIN | POLLOUT, HANDLE_TYPE_CLIENT_SOCKET);
+    Append(all_handles, client_sock, POLLIN, HANDLE_TYPE_CLIENT_SOCKET);
 
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
@@ -405,6 +405,28 @@ static void PutBroadcastMessagesInSubscriptionBuffers(struct PollingHandles* all
     }
 }
 
+static void SetPollWriteFlagsWhereWritebuffersHaveData(struct PollingHandles* polling_handles,
+                                                       const struct DynamicStringArray* broadcast_buffer) {
+    if (broadcast_buffer->size > 0) {
+
+        for (size_t i = 0; i < polling_handles->size; ++i)
+            polling_handles->pfds[i].events |= POLLOUT;
+        return; // Write flags are all set, no need to check write buffers individually in the following code
+    }
+
+    for (size_t i = 0; i < polling_handles->size; ++i) {
+        if (polling_handles->writing_buffers[i].size > 0)
+            polling_handles->pfds[i].events |= POLLOUT;
+    }
+}
+
+static void ClearPollWriteFlags(struct PollingHandles* polling_handles) {
+    for (size_t i = 0; i < polling_handles->size; ++i) {
+        if (polling_handles[i].writing_buffers->size > 0)
+            polling_handles->pfds[i].events &= ~POLLOUT;
+    }
+}
+
 #define POLL_TIMEOUT_MS 1000
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
@@ -426,6 +448,8 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
     int running = 1;
     while (running) {
+        ClearPollWriteFlags(&all_handles);
+        SetPollWriteFlagsWhereWritebuffersHaveData(&all_handles, &subscriber_broadcast);
         int ready = poll(all_handles.pfds, all_handles.size, POLL_TIMEOUT_MS);
         if (ready > 0) {
             for (size_t fd_index = 0; fd_index < all_handles.size; ++fd_index) {
