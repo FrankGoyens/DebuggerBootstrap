@@ -12,3 +12,10 @@ def make_project_description_packet(description_json):
     free(packet)
     return py_packet
 
+def make_subscribe_request_packet():
+    cdef uint8_t* packet
+    cdef size_t packet_size
+    cprotocol.MakeRequestSubscriptionPacket(&packet, &packet_size)
+    cdef bytes py_packet = bytes([packet[i] for i in range(0, packet_size)])
+    free(packet)
+    return py_packet

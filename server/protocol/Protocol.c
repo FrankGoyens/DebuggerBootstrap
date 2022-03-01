@@ -32,7 +32,7 @@ enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet,
 
 void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
-    *packet_size = 4;
+    *packet_size = PACKET_HEADER_SIZE;
     *packet = (uint8_t*)malloc(*packet_size);
     uint8_t* packet_content = *packet;
     packet_content[0] = version;
@@ -41,6 +41,7 @@ void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size) {
 
 void MakeSubscriptionResponsePacketHeader(uint8_t** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
+    *packet_size = PACKET_HEADER_SIZE;
     *packet = (uint8_t*)malloc(*packet_size);
     uint8_t* packet_content = *packet;
     packet_content[0] = version;
