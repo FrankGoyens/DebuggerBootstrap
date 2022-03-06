@@ -73,14 +73,17 @@ TEST(testProtocol, MakeAndDecodeSubscriptionResponsePacket) {
 }
 
 TEST(testProtocol, FindNullTerminator) {
-    char given_packet[128];
+    uint8_t given_packet[128];
     memset(given_packet, 'a', 128);
 
-    EXPECT_EQ(128, FindNullTerminator(given_packet, 128));
+    size_t position;
+    ASSERT_FALSE(FindNullTerminator(given_packet, 128, &position));
 
     given_packet[23] = '\0';
-    EXPECT_EQ(23, FindNullTerminator(given_packet, 128));
+    ASSERT_TRUE(FindNullTerminator(given_packet, 128, &position));
+    EXPECT_EQ(23, position);
 
     given_packet[0] = '\0';
-    EXPECT_EQ(0, FindNullTerminator(given_packet, 128));
+    ASSERT_TRUE(FindNullTerminator(given_packet, 128, &position));
+    EXPECT_EQ(0, position);
 }
