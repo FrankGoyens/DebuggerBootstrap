@@ -10,16 +10,16 @@ struct ProjectDescription;
 
 void MakeProjectDescriptionPacket(const char* project_description_json_string, uint8_t** packet, size_t* packet_size);
 
-enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE {
+typedef enum _DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE {
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION = 1,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN
-};
+} DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE;
 
-enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet, size_t packet_size,
-                                                          size_t* json_part_offset);
+DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet, size_t packet_size,
+                                                     size_t* json_part_offset);
 
 void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size);
 // This is just a header, any human readable utf-8 content may be appended to the output stream after putting this

@@ -18,8 +18,8 @@ void MakeProjectDescriptionPacket(const char* project_description_json_string, u
     memcpy(packet_content + PACKET_HEADER_SIZE, project_description_json_string, json_length);
 }
 
-enum DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet, size_t packet_size,
-                                                          size_t* json_part_offset) {
+DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet, size_t packet_size,
+                                                     size_t* json_part_offset) {
     if (packet_size < PACKET_HEADER_SIZE)
         return DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE;
     if (packet[0] != DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION)

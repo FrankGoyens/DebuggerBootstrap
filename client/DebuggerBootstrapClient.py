@@ -1,8 +1,26 @@
 import protocol.native_protocol as proto
-import socket
-import json
-import argparse
-import selectors
+from protocol.MessageDecoder import MessageDecoder
+import socket, json, argparse, selectors
+
+class ClientSideMessageDecoder(MessageDecoder):
+    def __init__(self, data):
+        self.data = data
+
+    def receive_subscription_response(self, packet_length, message_json):
+        print("Recieved subscription response: {}".format(message_json))
+        self.data = self.data[packet_length:]
+
+    def receive_incomplete_response(self, incomplete_data_bytes):
+        print("Got incomplete response: {}".format(incomplete_data_bytes))
+
+    def receive_unknown_response(self, unknown_data_bytes):
+        print("Got complete garbage: {}".format(unknown_data_bytes))
+        self.data = bytes()
+
+def _receiveServerData(data):
+    decoder = ClientSideMessageDecoder(data)
+    proto.decode_packet(data, decoder)
+    return decoder.data
 
 def MakeProjectDescription():
     return {"executable_name":"test_exe", "executable_hash": "abc", "link_dependencies_for_executable": [], "link_dependencies_for_executable_hashes": []}
@@ -23,6 +41,8 @@ if __name__ == "__main__":
     send_buffer = proto.make_subscribe_request_packet()
     send_buffer += proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
 
+    receive_buffer = bytes()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.connect((args.HOST, args.PORT))
@@ -38,11 +58,12 @@ if __name__ == "__main__":
                         if not send_buffer:
                             selector.modify(s, selectors.EVENT_READ)
                     if mask &selectors.EVENT_READ:
-                        message = s.recv(1024)
+                        message = s.recv(16)
                         if not message:
                             print("Connection to server is lost")
                             connected = False
-                        print(message)
+                        receive_buffer += message
+                        receive_buffer = _receiveServerData(receive_buffer)
                 print("and another")
         except OverflowError as e:
             print("Error connecting to server: {}".format(e))
@@ -50,3 +71,5 @@ if __name__ == "__main__":
         except ConnectionRefusedError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)
+        except KeyboardInterrupt:
+            print("User requested exit through Ctrl+C")
