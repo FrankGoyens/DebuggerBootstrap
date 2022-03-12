@@ -286,3 +286,17 @@ void IndicateRemovedFile(struct Bootstrapper* bootstrapper, const char* file_nam
         Stop(bootstrapper, internal);
     }
 }
+
+void ForceStartDebugger(struct Bootstrapper* bootstrapper) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal)
+        return;
+    Start(bootstrapper, internal);
+}
+
+void ForceStopDebugger(struct Bootstrapper* bootstrapper) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal)
+        return;
+    Stop(bootstrapper, internal);
+}

@@ -14,6 +14,9 @@ typedef enum _DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE {
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION = 1,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE,
+    DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_START,
+    DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_STOP,
+
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE,
     DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN
 } DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE;
@@ -25,5 +28,8 @@ void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size);
 // This is just a header, any human readable utf-8 content may be appended to the output stream after putting this
 // packet in the outputstream, a '\0' indicates the end of the packet
 void MakeSubscriptionResponsePacketHeader(uint8_t** packet, size_t* packet_size);
+
+void MakeForceStartDebuggerPacket(uint8_t** packet, size_t* packet_size);
+void MakeForceStopDebuggerPacket(uint8_t** packet, size_t* packet_size);
 
 int FindNullTerminator(const uint8_t* packet, size_t packet_size, size_t* position);

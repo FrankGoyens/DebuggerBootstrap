@@ -30,22 +30,29 @@ DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE DecodePacket(const uint8_t* packet, size
     return packet[1];
 }
 
-void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size) {
+static void MakeHeaderOnlyPacket(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE type, uint8_t** packet, size_t* packet_size) {
     const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
     *packet_size = PACKET_HEADER_SIZE;
     *packet = (uint8_t*)malloc(*packet_size);
     uint8_t* packet_content = *packet;
     packet_content[0] = version;
-    packet_content[1] = DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST;
+    packet_content[1] = type;
+}
+
+void MakeRequestSubscriptionPacket(uint8_t** packet, size_t* packet_size) {
+    MakeHeaderOnlyPacket(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST, packet, packet_size);
 }
 
 void MakeSubscriptionResponsePacketHeader(uint8_t** packet, size_t* packet_size) {
-    const uint8_t version = DEBUGGER_BOOTSTRAP_PROTOCOL_VERSION;
-    *packet_size = PACKET_HEADER_SIZE;
-    *packet = (uint8_t*)malloc(*packet_size);
-    uint8_t* packet_content = *packet;
-    packet_content[0] = version;
-    packet_content[1] = DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE;
+    MakeHeaderOnlyPacket(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE, packet, packet_size);
+}
+
+void MakeForceStartDebuggerPacket(uint8_t** packet, size_t* packet_size) {
+    MakeHeaderOnlyPacket(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_START, packet, packet_size);
+}
+
+void MakeForceStopDebuggerPacket(uint8_t** packet, size_t* packet_size) {
+    MakeHeaderOnlyPacket(DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_STOP, packet, packet_size);
 }
 
 int FindNullTerminator(const uint8_t* packet, size_t packet_size, size_t* position) {

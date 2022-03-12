@@ -156,10 +156,11 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
-static void InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_buffer,
-                                                  struct Bootstrapper* bootstrapper, size_t json_offset) {
+// Returns True when data was successfully interpreted
+static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_buffer,
+                                                 struct Bootstrapper* bootstrapper, size_t json_offset) {
     if (json_offset > reading_buffer->size)
-        return;
+        return 0;
     size_t null_terminator_index;
     if (FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset,
                            &null_terminator_index)) {
@@ -171,8 +172,10 @@ static void InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index + 1);
             ReceiveNewProjectDescription(bootstrapper, &description);
             ProjectDescriptionDeinit(&description);
+            return 1;
         }
     }
+    return 0;
 }
 
 static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broadcast, const char* tag,
@@ -183,8 +186,11 @@ static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broad
 }
 
 // This will remove the data that is successfully interpreted
-static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_index, struct Bootstrapper* bootstrapper,
-                                struct DynamicStringArray* subscriber_broadcast) {
+// Returns True when data was successfully interpreted
+// When the data is unrecognizable, the buffer may be cleared without returning True
+// When the data is incomplete, the buffer will not be cleared and False is returned
+static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_index, struct Bootstrapper* bootstrapper,
+                               struct DynamicStringArray* subscriber_broadcast) {
     struct DynamicBuffer* reading_buffer = &all_handles->reading_buffers[fd_index];
 
     size_t json_offset;
@@ -192,12 +198,12 @@ static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_in
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION:
         InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
         AppendMessageToBroadcast(subscriber_broadcast, "PROJECT DESCRIPTION", "New project description recieved");
-        break;
+        return 1;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST:
         printf("Got a subscribe request\n");
         all_handles->types[fd_index] = HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION;
         DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
-        break;
+        return 1;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE: {
         size_t null_terminator_index;
         if (FindNullTerminator(&reading_buffer->data[PACKET_HEADER_SIZE], reading_buffer->size - PACKET_HEADER_SIZE,
@@ -205,15 +211,27 @@ static void InterpretClientData(struct PollingHandles* all_handles, size_t fd_in
             null_terminator_index += PACKET_HEADER_SIZE;
             printf("Got a subscribe response, that's odd because I'm the server\n");
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index);
+            return 1;
         }
-        break;
+        return 0;
     }
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_START:
+        printf("Got request to force start debugger\n");
+        ForceStartDebugger(bootstrapper);
+        DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        return 1;
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_STOP:
+        printf("Got request to force stop debugger\n");
+        ForceStopDebugger(bootstrapper);
+        DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
+        return 1;
+
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE:
-        break;
+        return 0;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_UNKNOWN:
         printf("Got complete nonsense, clearing the buffer...\n");
         DynamicBufferTrimLeft(reading_buffer, reading_buffer->size);
-        break;
+        return 0;
     }
 }
 
@@ -229,7 +247,8 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
             printf("exit requested\n");
             *running = 0;
         }
-        InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast);
+        while (InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast)) {
+        }
     } else if (read_size < 0) {
         fprintf(stderr, "recv failed: %s (%d)\n", strerror(errno), errno);
         Erase(all_handles, fd_index);

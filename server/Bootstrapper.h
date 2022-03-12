@@ -38,3 +38,6 @@ void UpdateFileActualHash(struct Bootstrapper*, const char* file_name);
 // processed
 void UpdateFileActualHashes(struct Bootstrapper*, const struct DynamicStringArray* file_names);
 void IndicateRemovedFile(struct Bootstrapper*, const char* file_name);
+
+void ForceStartDebugger(struct Bootstrapper*);
+void ForceStopDebugger(struct Bootstrapper*);

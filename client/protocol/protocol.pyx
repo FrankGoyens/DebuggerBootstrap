@@ -13,13 +13,22 @@ def make_project_description_packet(description_json):
     free(packet)
     return py_packet
 
-def make_subscribe_request_packet():
+cdef _make_header_only_packet(void(*header_create_function)(uint8_t**, size_t*)):
     cdef uint8_t* packet
     cdef size_t packet_size
-    cprotocol.MakeRequestSubscriptionPacket(&packet, &packet_size)
+    header_create_function(&packet, &packet_size)
     cdef bytes py_packet = bytes([packet[i] for i in range(0, packet_size)])
     free(packet)
     return py_packet
+
+def make_subscribe_request_packet():
+    return _make_header_only_packet(cprotocol.MakeRequestSubscriptionPacket)
+
+def make_force_start_debugger_packet():
+    return _make_header_only_packet(cprotocol.MakeForceStartDebuggerPacket)
+
+def make_force_stop_debugger_packet():
+    return _make_header_only_packet(cprotocol.MakeForceStopDebuggerPacket)
 
 def decode_packet(packet_data, message_decoder):
     cdef bytes c_packet_data = packet_data
