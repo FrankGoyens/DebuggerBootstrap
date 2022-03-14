@@ -12,6 +12,7 @@ set(DebuggerBootstrap_Headers
 	Bootstrapper.h
 	FileHasher.h
 	SubscriberUpdate.h
+	GDBServerStartStop.h
 
 	protocol/Protocol.h
 )
@@ -24,6 +25,7 @@ set(DebuggerBootstrap_Sources
 	Bootstrapper.c
 	FileHasher.c
 	SubscriberUpdate.c
+	GDBServerStartStop.c
 
 	protocol/Protocol.c
 )

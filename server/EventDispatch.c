@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 
 #include "Bootstrapper.h"
+#include "GDBServerStartStop.h"
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
 #include "SubscriberUpdate.h"
@@ -28,7 +29,7 @@ enum HandleType {
 };
 
 struct BootstrapperUserdata {
-    int gdbserver_pid;
+    struct GDBInstance* gdbserver_instance;
 };
 
 struct DynamicBuffer {
@@ -258,79 +259,6 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
     }
 }
 
-static int StartGDBServer(void* userdata) {
-    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
-    if (bootstrapper_userdata) {
-        if (bootstrapper_userdata->gdbserver_pid != -1)
-            return 1; // Already running
-    }
-
-    int pipefd[2];
-    int pipefd_err[2];
-    int p1 = pipe(pipefd);
-    int p2 = pipe(pipefd_err);
-    pid_t pid = fork();
-    if (pid == 0) {
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd_err[1], STDERR_FILENO);
-        close(pipefd[0]);
-        close(pipefd[1]);
-        close(pipefd_err[0]);
-        close(pipefd_err[1]);
-        char* args[] = {"gdbserver", "--help", NULL};
-        char* env[] = {NULL};
-        execve("/usr/bin/gdbserver", args, env);
-    } else {
-        close(pipefd[1]);
-        close(pipefd_err[1]);
-        printf("parent is sleeping...\n");
-
-        char buffer[512];
-
-        int bytes = 0;
-        int bytes_err = 0;
-        while ((bytes = read(pipefd[0], buffer, sizeof(buffer))) > 0)
-            printf("Output: (%.*s)\n", bytes, buffer);
-        while ((bytes_err = read(pipefd_err[0], buffer, sizeof(buffer))) > 0)
-            printf("Output (err): (%.*s)\n", bytes, buffer);
-    };
-
-    if (bootstrapper_userdata) {
-        bootstrapper_userdata->gdbserver_pid = pid;
-    }
-
-    return 1;
-}
-
-#define STOPPING_WAIT_TIME_MS 1000
-#define SLEEP_WAIT_TIME_MS 10
-#define MAX_WAIT_LOOPS (STOPPING_WAIT_TIME_MS / SLEEP_WAIT_TIME_MS)
-
-// First signals SIGTERM, then waits up to STOPPING_WAIT_TIME_MS for GDB server to stop
-// When the GDB server has not stopped after STOPPING_WAIT_TIME_MS, SIGKILL is sent, and it is assumed that the GDB
-// server will stop
-static int StopGDBServer(void* userdata) {
-    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
-    if (bootstrapper_userdata) {
-        if (bootstrapper_userdata->gdbserver_pid == -1)
-            return 1;
-        kill(bootstrapper_userdata->gdbserver_pid, SIGTERM);
-        int status;
-        int loops = 0;
-        do {
-            waitpid(bootstrapper_userdata->gdbserver_pid, &status, WNOHANG);
-
-            sleep(SLEEP_WAIT_TIME_MS);
-            ++loops;
-        } while (!WIFEXITED(status) && !WIFSIGNALED(status) && loops <= MAX_WAIT_LOOPS);
-        if (loops == MAX_WAIT_LOOPS)
-            kill(bootstrapper_userdata->gdbserver_pid, SIGKILL);
-        bootstrapper_userdata->gdbserver_pid = -1;
-        return 1;
-    }
-    return 0;
-}
-
 static int FileExists(const char* file) { return access(file, F_OK) == 0; }
 static int FileExists_Bound(const char* file, void* userdata) { return FileExists(file); }
 
@@ -341,10 +269,26 @@ static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, 
     strcpy(*hash, dummy_hash);
 }
 
+static int StartGDBServer_Bound(void* userdata) {
+    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
+    if (!bootstrapper_userdata) {
+        return 1;
+    }
+    return StartGDBServer(bootstrapper_userdata->gdbserver_instance);
+}
+
+static int StopGDBServer_Bound(void* userdata) {
+    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)userdata;
+    if (!bootstrapper_userdata) {
+        return 1;
+    }
+    return StopGDBServer(bootstrapper_userdata->gdbserver_instance);
+}
+
 static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) {
     bootstrapper->userdata = userdata;
-    bootstrapper->startGDBServer = &StartGDBServer;
-    bootstrapper->stopGDBServer = &StopGDBServer;
+    bootstrapper->startGDBServer = &StartGDBServer_Bound;
+    bootstrapper->stopGDBServer = &StopGDBServer_Bound;
     bootstrapper->fileExists = &FileExists_Bound;
     bootstrapper->calculateHash = &CalculateFileHash;
     BootstrapperInit(bootstrapper);
@@ -493,7 +437,9 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
     char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE];
 
     struct Bootstrapper bootstrapper;
-    BindBootstrapper(&bootstrapper, NULL);
+    struct BootstrapperUserdata userdata;
+    GDBInstanceInit(userdata.gdbserver_instance);
+    BindBootstrapper(&bootstrapper, &userdata);
 
     int running = 1;
     while (running) {
@@ -544,6 +490,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
         ValidateMismatches(&bootstrapper);
     }
+    GDBInstanceDeinit(userdata.gdbserver_instance);
     DynamicStringArrayDeinit(&subscriber_broadcast);
     Deinit(&all_handles);
     BootstrapperDeinit(&bootstrapper);
