@@ -1,8 +1,4 @@
-#define _XOPEN_SOURCE 500
-#define _GNU_SOURCE
-
 #include <argp.h>
-#include <ftw.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,19 +73,27 @@ void SetDefaults(struct arguments* arguments) {
     arguments->verbose = 0;
 }
 
+static void RetrieveArguments(int argc, char** argv, struct arguments* arguments) {
+    SetDefaults(arguments);
+
+    argp_parse(&argp, argc, argv, 0, 0, arguments);
+
+    printf("Chosen port %d\n", arguments->port);
+    if (arguments->port == 0)
+        printf("\t(port will be determined and reported later)\n");
+    printf("GDBServer binary that will be used: %s\n", arguments->gdbserver_binary);
+}
+
 int main(int argc, char** argv) {
     struct arguments arguments;
+    RetrieveArguments(argc, argv, &arguments);
 
-    SetDefaults(&arguments);
+    struct DebuggerParameters debugger_arguments;
+    debugger_arguments.debugger_path = arguments.gdbserver_binary;
+    DynamicStringArrayInit(&debugger_arguments.debugger_args);
 
-    argp_parse(&argp, argc, argv, 0, 0, &arguments);
+    StartEventDispatch(arguments.port, &debugger_arguments);
 
-    printf("Chosen port %d\n", arguments.port);
-    if (arguments.port == 0)
-        printf("\t(port will be determined and reported later)\n");
-    printf("GDBServer binary that will be used: %s\n", arguments.gdbserver_binary);
-
-    StartEventDispatch(arguments.port);
-
+    DynamicStringArrayDeinit(&debugger_arguments.debugger_args);
     return 0;
 }

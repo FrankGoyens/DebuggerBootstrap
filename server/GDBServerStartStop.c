@@ -1,16 +1,24 @@
 #include "GDBServerStartStop.h"
 
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <wait.h>
 
-void GDBInstanceInit(struct GDBInstance* instance) {
-    instance = (struct GDBInstance*)malloc(sizeof(struct GDBInstance));
+void GDBInstanceInit(struct GDBInstance* instance, const char* debugger_path) {
     instance->pid = -1;
+    instance->debugger_path = (char*)malloc(sizeof(char) * (strlen(debugger_path) + 1));
+    strcpy(instance->debugger_path, debugger_path);
+    DynamicStringArrayInit(&instance->debugger_args);
 }
-void GDBInstanceDeinit(struct GDBInstance* instance) { free(instance); }
+
+void GDBInstanceDeinit(struct GDBInstance* instance) {
+    free(instance);
+    free(instance->debugger_path);
+}
 
 int StartGDBServer(struct GDBInstance* instance) {
 
@@ -29,13 +37,15 @@ int StartGDBServer(struct GDBInstance* instance) {
         close(pipefd[1]);
         close(pipefd_err[0]);
         close(pipefd_err[1]);
-        char* args[] = {"gdbserver", "--help", NULL};
+        char* args[] = {instance->debugger_path, NULL};
         char* env[] = {NULL};
-        execve("/usr/bin/gdbserver", args, env);
+        errno = 0;
+        execve(instance->debugger_path, args, env);
+        fprintf(stderr, "Error calling execve in child process: %s\n", strerror(errno));
+        exit(1);
     } else {
         close(pipefd[1]);
         close(pipefd_err[1]);
-        printf("parent is sleeping...\n");
 
         char buffer[512];
 
@@ -44,7 +54,10 @@ int StartGDBServer(struct GDBInstance* instance) {
         while ((bytes = read(pipefd[0], buffer, sizeof(buffer))) > 0)
             printf("Output: (%.*s)\n", bytes, buffer);
         while ((bytes_err = read(pipefd_err[0], buffer, sizeof(buffer))) > 0)
-            printf("Output (err): (%.*s)\n", bytes, buffer);
+            printf("Output (err): (%.*s)\n", bytes_err, buffer);
+
+        close(pipefd[0]);
+        close(pipefd_err[0]);
     };
 
     instance->pid = pid;

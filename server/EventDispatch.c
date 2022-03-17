@@ -29,7 +29,7 @@ enum HandleType {
 };
 
 struct BootstrapperUserdata {
-    struct GDBInstance* gdbserver_instance;
+    struct GDBInstance gdbserver_instance;
 };
 
 struct DynamicBuffer {
@@ -274,7 +274,7 @@ static int StartGDBServer_Bound(void* userdata) {
     if (!bootstrapper_userdata) {
         return 1;
     }
-    return StartGDBServer(bootstrapper_userdata->gdbserver_instance);
+    return StartGDBServer(&bootstrapper_userdata->gdbserver_instance);
 }
 
 static int StopGDBServer_Bound(void* userdata) {
@@ -282,7 +282,7 @@ static int StopGDBServer_Bound(void* userdata) {
     if (!bootstrapper_userdata) {
         return 1;
     }
-    return StopGDBServer(bootstrapper_userdata->gdbserver_instance);
+    return StopGDBServer(&bootstrapper_userdata->gdbserver_instance);
 }
 
 static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) {
@@ -420,9 +420,15 @@ static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
     return 0;
 }
 
+static void PutDebuggerArgsInDebuggerInstance(const struct DebuggerParameters* parameters,
+                                              struct GDBInstance* instance) {
+    DynamicStringArrayCopy(&parameters->debugger_args, &instance->debugger_args);
+}
+
 #define POLL_TIMEOUT_MS 1000
 
-static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
+static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
+                               struct DebuggerParameters* debugger_parameters) {
     listen(socket_desc, 3);
 
     printf("Waiting for incoming connections\n");
@@ -438,8 +444,10 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
     struct Bootstrapper bootstrapper;
     struct BootstrapperUserdata userdata;
-    GDBInstanceInit(userdata.gdbserver_instance);
+    GDBInstanceInit(&userdata.gdbserver_instance, debugger_parameters->debugger_path);
     BindBootstrapper(&bootstrapper, &userdata);
+
+    ForceStartDebugger(&bootstrapper);
 
     int running = 1;
     while (running) {
@@ -490,7 +498,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server) {
 
         ValidateMismatches(&bootstrapper);
     }
-    GDBInstanceDeinit(userdata.gdbserver_instance);
+    GDBInstanceDeinit(&userdata.gdbserver_instance);
     DynamicStringArrayDeinit(&subscriber_broadcast);
     Deinit(&all_handles);
     BootstrapperDeinit(&bootstrapper);
@@ -507,7 +515,7 @@ static void ReportSocketPort(int socket_desc) {
         fprintf(stderr, "Something went wrong retrieving server socket name: %s\n", strerror(errno));
 }
 
-void StartEventDispatch(int port) {
+void StartEventDispatch(int port, struct DebuggerParameters* debugger_parameters) {
     int socket_desc;
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -528,5 +536,5 @@ void StartEventDispatch(int port) {
 
     ReportSocketPort(socket_desc);
 
-    StartRecievingData(socket_desc, &server);
+    StartRecievingData(socket_desc, &server, debugger_parameters);
 }
