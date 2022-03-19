@@ -350,3 +350,29 @@ TEST(testBootstrapper, IndicateRemovedFile) {
     ProjectDescriptionDeinit(&given_description);
     BootstrapperDeinit(&given_bootstrapper);
 }
+
+TEST(testBootstrapper, IndicateDebuggerStopped) {
+    FakeUserdata given_userdata{{"LightSpeedFileExplorer"}, {{"LightSpeedFileExplorer", "abcd"}}};
+
+    struct Bootstrapper given_bootstrapper = {static_cast<void*>(&given_userdata),
+                                              &FakeStartGDBServer,
+                                              &FakeStopGDBServer,
+                                              &FakeFileExists,
+                                              &FakeCalculateHash,
+                                              NULL};
+
+    BootstrapperInit(&given_bootstrapper);
+    struct ProjectDescription given_description;
+    ProjectDescriptionInit(&given_description, "LightSpeedFileExplorer", "abcd");
+
+    ReceiveNewProjectDescription(&given_bootstrapper, &given_description);
+
+    ASSERT_TRUE(IsGDBServerUp(&given_bootstrapper));
+
+    IndicateDebuggerHasStopped(&given_bootstrapper);
+
+    EXPECT_FALSE(IsGDBServerUp(&given_bootstrapper));
+
+    ProjectDescriptionDeinit(&given_description);
+    BootstrapperDeinit(&given_bootstrapper);
+}

@@ -114,17 +114,24 @@ static int ShouldStartGDBServer(struct BootstrapperInternal* internal) {
     return 1;
 }
 
-static void Start(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
+static int Start(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
     if (internal->gdbIsRunning)
-        bootstrapper->stopGDBServer(bootstrapper->userdata);
-    bootstrapper->startGDBServer(bootstrapper->userdata);
-    internal->gdbIsRunning = 1;
+        return 0;
+    if (bootstrapper->startGDBServer(bootstrapper->userdata)) {
+        internal->gdbIsRunning = 1;
+        return 1;
+    }
+    return 0;
 }
 
-static void Stop(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
-    if (internal->gdbIsRunning)
-        bootstrapper->stopGDBServer(bootstrapper->userdata);
-    internal->gdbIsRunning = 0;
+static int Stop(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
+    if (!internal->gdbIsRunning)
+        return 0;
+    if (bootstrapper->stopGDBServer(bootstrapper->userdata)) {
+        internal->gdbIsRunning = 0;
+        return 1;
+    }
+    return 0;
 }
 
 static int ProjectIsLoaded(struct BootstrapperInternal* internal) {
@@ -287,16 +294,23 @@ void IndicateRemovedFile(struct Bootstrapper* bootstrapper, const char* file_nam
     }
 }
 
-void ForceStartDebugger(struct Bootstrapper* bootstrapper) {
+void IndicateDebuggerHasStopped(struct Bootstrapper* bootstrapper) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return;
-    Start(bootstrapper, internal);
+    internal->gdbIsRunning = 0;
 }
 
-void ForceStopDebugger(struct Bootstrapper* bootstrapper) {
+int ForceStartDebugger(struct Bootstrapper* bootstrapper) {
     struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
-        return;
-    Stop(bootstrapper, internal);
+        return 0;
+    return Start(bootstrapper, internal);
+}
+
+int ForceStopDebugger(struct Bootstrapper* bootstrapper) {
+    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal)
+        return 0;
+    return Stop(bootstrapper, internal);
 }

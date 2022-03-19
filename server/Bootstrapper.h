@@ -39,5 +39,12 @@ void UpdateFileActualHash(struct Bootstrapper*, const char* file_name);
 void UpdateFileActualHashes(struct Bootstrapper*, const struct DynamicStringArray* file_names);
 void IndicateRemovedFile(struct Bootstrapper*, const char* file_name);
 
-void ForceStartDebugger(struct Bootstrapper*);
-void ForceStopDebugger(struct Bootstrapper*);
+void IndicateDebuggerHasStopped(struct Bootstrapper*);
+
+// Returns FALSE when the debugger is already running
+// Returns TRUE when the debugger was not running and was succesfully started
+int ForceStartDebugger(struct Bootstrapper*);
+
+// Returns FALSE when the debugger was not running
+// Returns TRUE when the debugger was running and was succesfully stopped
+int ForceStopDebugger(struct Bootstrapper*);

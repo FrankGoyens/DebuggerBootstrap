@@ -8,8 +8,14 @@
 #include <unistd.h>
 #include <wait.h>
 
+static void SetHandleDefaults(struct GDBInstance* instance) {
+    instance->pid = NO_PID;
+    instance->stdout_handle = -1;
+    instance->stderr_handle = -1;
+}
+
 void GDBInstanceInit(struct GDBInstance* instance, const char* debugger_path) {
-    instance->pid = -1;
+    SetHandleDefaults(instance);
     instance->debugger_path = (char*)malloc(sizeof(char) * (strlen(debugger_path) + 1));
     strcpy(instance->debugger_path, debugger_path);
     DynamicStringArrayInit(&instance->debugger_args);
@@ -20,9 +26,19 @@ void GDBInstanceDeinit(struct GDBInstance* instance) {
     free(instance->debugger_path);
 }
 
+static void CloseStdOutputs(struct GDBInstance* instance) {
+    close(instance->stdout_handle);
+    close(instance->stderr_handle);
+}
+
+void GDBInstanceClear(struct GDBInstance* instance) {
+    CloseStdOutputs(instance);
+    SetHandleDefaults(instance);
+}
+
 int StartGDBServer(struct GDBInstance* instance) {
 
-    if (instance->pid != -1)
+    if (instance->pid != NO_PID)
         return 1; // Already running
 
     int pipefd[2];
@@ -43,24 +59,15 @@ int StartGDBServer(struct GDBInstance* instance) {
         execve(instance->debugger_path, args, env);
         fprintf(stderr, "Error calling execve in child process: %s\n", strerror(errno));
         exit(1);
-    } else {
-        close(pipefd[1]);
-        close(pipefd_err[1]);
+    }
 
-        char buffer[512];
-
-        int bytes = 0;
-        int bytes_err = 0;
-        while ((bytes = read(pipefd[0], buffer, sizeof(buffer))) > 0)
-            printf("Output: (%.*s)\n", bytes, buffer);
-        while ((bytes_err = read(pipefd_err[0], buffer, sizeof(buffer))) > 0)
-            printf("Output (err): (%.*s)\n", bytes_err, buffer);
-
-        close(pipefd[0]);
-        close(pipefd_err[0]);
-    };
+    // Only parent process continues here
+    close(pipefd[1]);
+    close(pipefd_err[1]);
 
     instance->pid = pid;
+    instance->stdout_handle = pipefd[0];
+    instance->stderr_handle = pipefd_err[0];
 
     return 1;
 }
@@ -73,8 +80,10 @@ int StartGDBServer(struct GDBInstance* instance) {
 // When the GDB server has not stopped after STOPPING_WAIT_TIME_MS, SIGKILL is sent, and it is assumed that the GDB
 // server will stop
 int StopGDBServer(struct GDBInstance* instance) {
-    if (instance->pid == -1)
+    if (instance->pid == NO_PID)
         return 1;
+
+    CloseStdOutputs(instance);
 
     kill(instance->pid, SIGTERM);
     int status;
@@ -87,6 +96,8 @@ int StopGDBServer(struct GDBInstance* instance) {
     } while (!WIFEXITED(status) && !WIFSIGNALED(status) && loops <= MAX_WAIT_LOOPS);
     if (loops == MAX_WAIT_LOOPS)
         kill(instance->pid, SIGKILL);
-    instance->pid = -1;
+
+    SetHandleDefaults(instance);
+
     return 1;
 }

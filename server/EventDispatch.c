@@ -25,7 +25,9 @@
 enum HandleType {
     HANDLE_TYPE_SERVER_SOCKET,
     HANDLE_TYPE_CLIENT_SOCKET,
-    HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION // This client socket will recieve status updates as well
+    HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION, // This client socket will recieve status updates as well
+    HANDLE_TYPE_DEBUGGER_STDOUT,
+    HANDLE_TYPE_DEBUGGER_STDERR
 };
 
 struct BootstrapperUserdata {
@@ -157,6 +159,75 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
+static void AddDebuggerHandlesToPollingHandles(struct PollingHandles* all_handles, int debugger_stdout,
+                                               int debugger_stderr) {
+    Append(all_handles, debugger_stdout, POLLIN, HANDLE_TYPE_DEBUGGER_STDOUT);
+    Append(all_handles, debugger_stderr, POLLIN, HANDLE_TYPE_DEBUGGER_STDERR);
+
+    fcntl(debugger_stdout, F_SETFL, fcntl(debugger_stdout, F_GETFL, 0) | O_NONBLOCK);
+    fcntl(debugger_stderr, F_SETFL, fcntl(debugger_stderr, F_GETFL, 0) | O_NONBLOCK);
+}
+
+static void AddDebuggerHandlesToPollingHandlesIfRunning(struct PollingHandles* all_handles,
+                                                        struct Bootstrapper* bootstrapper) {
+
+    struct BootstrapperUserdata* userdata = (struct BootstrapperUserdata*)bootstrapper->userdata;
+    if (!userdata)
+        return;
+
+    if (userdata->gdbserver_instance.pid == NO_PID)
+        return;
+
+    for (int fd_index = 0; fd_index < all_handles->size; ++fd_index) {
+        if (all_handles->types[fd_index] == HANDLE_TYPE_DEBUGGER_STDOUT ||
+            all_handles->types[fd_index] == HANDLE_TYPE_DEBUGGER_STDERR) {
+            fprintf(stderr,
+                    "FIXME: The debugger handles are already present, there should only be one set of handles.");
+            return;
+        }
+    }
+    AddDebuggerHandlesToPollingHandles(all_handles, userdata->gdbserver_instance.stdout_handle,
+                                       userdata->gdbserver_instance.stderr_handle);
+}
+
+// When not found, returns all_handles->size
+static int FindFirstItemWithType(struct PollingHandles* all_handles, enum HandleType handle_type) {
+    for (int fd_index = 0; fd_index < all_handles->size; ++fd_index) {
+        if (all_handles->types[fd_index] == handle_type)
+            return fd_index;
+    }
+
+    return all_handles->size;
+}
+
+static void ExpectPresentAndErase(struct PollingHandles* all_handles, enum HandleType type,
+                                  const char* message_when_not_present) {
+    const int stdout_index = FindFirstItemWithType(all_handles, type);
+    if (stdout_index == all_handles->size)
+        fprintf(stderr, "%s", message_when_not_present);
+    else
+        Erase(all_handles, stdout_index);
+}
+
+static void ExpectAndEraseDebuggerHandles(struct PollingHandles* all_handles) {
+    ExpectPresentAndErase(all_handles, HANDLE_TYPE_DEBUGGER_STDOUT,
+                          "FIXME: The debugger is running, but its stdout handle is not present\n");
+    ExpectPresentAndErase(all_handles, HANDLE_TYPE_DEBUGGER_STDERR,
+                          "FIXME: The debugger is running, but its stderr handle is not present\n");
+}
+
+static void RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(struct PollingHandles* all_handles,
+                                                                struct Bootstrapper* bootstrapper) {
+    struct BootstrapperUserdata* userdata = (struct BootstrapperUserdata*)bootstrapper->userdata;
+    if (!userdata)
+        return;
+
+    if (userdata->gdbserver_instance.pid != NO_PID)
+        return;
+
+    ExpectAndEraseDebuggerHandles(all_handles);
+}
+
 // Returns True when data was successfully interpreted
 static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_buffer,
                                                  struct Bootstrapper* bootstrapper, size_t json_offset) {
@@ -171,7 +242,9 @@ static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_b
         if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
             printf("I got a valid project description!\n");
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index + 1);
+            const int debugger_is_running = IsGDBServerUp(bootstrapper);
             ReceiveNewProjectDescription(bootstrapper, &description);
+
             ProjectDescriptionDeinit(&description);
             return 1;
         }
@@ -181,6 +254,7 @@ static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_b
 
 static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broadcast, const char* tag,
                                      const char* message) {
+    printf("Broadcasting:\nTAG=%s\nMESSAGE=%s\n", tag, message);
     char* encoded_message = EncodeSubscriberUpdateMessage(tag, message);
     DynamicStringArrayAppend(subscriber_broadcast, encoded_message);
     free(encoded_message);
@@ -196,10 +270,11 @@ static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_ind
 
     size_t json_offset;
     switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
-    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION:
-        InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
+    case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
+        const int result = InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
         AppendMessageToBroadcast(subscriber_broadcast, "PROJECT DESCRIPTION", "New project description recieved");
-        return 1;
+        return result;
+    }
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST:
         printf("Got a subscribe request\n");
         all_handles->types[fd_index] = HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION;
@@ -218,12 +293,14 @@ static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_ind
     }
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_START:
         printf("Got request to force start debugger\n");
-        ForceStartDebugger(bootstrapper);
+        // The upper level function would check whether the debugger started/stopped
+        (void)ForceStartDebugger(bootstrapper);
         DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
         return 1;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_FORCE_DEBUGGER_STOP:
         printf("Got request to force stop debugger\n");
-        ForceStopDebugger(bootstrapper);
+        // The upper level function would check whether the debugger started/stopped
+        (void)ForceStopDebugger(bootstrapper);
         DynamicBufferTrimLeft(reading_buffer, PACKET_HEADER_SIZE);
         return 1;
 
@@ -251,9 +328,11 @@ static void RecieveClientSocketData(int client_sock, size_t fd_index, char* clie
         while (InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast)) {
         }
     } else if (read_size < 0) {
+        close(client_sock);
         fprintf(stderr, "recv failed: %s (%d)\n", strerror(errno), errno);
         Erase(all_handles, fd_index);
     } else {
+        close(client_sock);
         printf("Client disconnected\n");
         Erase(all_handles, fd_index);
     }
@@ -367,12 +446,6 @@ static void PutBroadcastMessagesInSubscriptionBuffers(struct PollingHandles* all
 
 static void SetPollWriteFlagsWhereWritebuffersHaveData(struct PollingHandles* polling_handles,
                                                        const struct DynamicStringArray* broadcast_buffer) {
-    if (broadcast_buffer->size > 0) {
-
-        for (size_t i = 0; i < polling_handles->size; ++i)
-            polling_handles->pfds[i].events |= POLLOUT;
-        return; // Write flags are all set, no need to check write buffers individually in the following code
-    }
 
     for (size_t i = 0; i < polling_handles->size; ++i) {
         if (polling_handles->writing_buffers[i].size > 0)
@@ -382,9 +455,16 @@ static void SetPollWriteFlagsWhereWritebuffersHaveData(struct PollingHandles* po
 
 static void ClearPollWriteFlags(struct PollingHandles* polling_handles) {
     for (size_t i = 0; i < polling_handles->size; ++i) {
-        if (polling_handles[i].writing_buffers->size > 0)
-            polling_handles->pfds[i].events &= ~POLLOUT;
+        polling_handles->pfds[i].events &= ~POLLOUT;
     }
+}
+
+// Actually checks whether the PID is set, instead of relying on the bootstrapper's perspective
+static int DebuggerProcessIsRunning(struct Bootstrapper* bootstrapper) {
+    struct BootstrapperUserdata* bootstrapper_userdata = (struct BootstrapperUserdata*)bootstrapper->userdata;
+    if (!bootstrapper_userdata)
+        return 0;
+    return bootstrapper_userdata->gdbserver_instance.pid != NO_PID;
 }
 
 // Returns true when the current poll result is invalidated
@@ -392,28 +472,39 @@ static int ReceivePollAware(struct PollingHandles* all_handles, size_t fd_index,
                             struct Bootstrapper* bootstrapper, int* running,
                             struct DynamicStringArray* subscriber_broadcast) {
     size_t current_size = all_handles->size;
+    const int debugger_is_running = DebuggerProcessIsRunning(bootstrapper);
+
     RecieveClientSocketData(all_handles->pfds[fd_index].fd, fd_index, client_message, all_handles, bootstrapper,
                             running, subscriber_broadcast);
-    PutBroadcastMessagesInSubscriptionBuffers(all_handles, subscriber_broadcast);
-    DynamicStringArrayClear(subscriber_broadcast);
+
+    if ((debugger_is_running != DebuggerProcessIsRunning(bootstrapper))) {
+        AddDebuggerHandlesToPollingHandlesIfRunning(all_handles, bootstrapper);
+        RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(all_handles, bootstrapper);
+        return 1;
+    }
+
     if (current_size != all_handles->size)
         return 1;
+
     return 0;
 }
 
 // Returns true when the current poll result is invalidated
 static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
+    const int fd = all_handles->pfds[fd_index].fd;
     errno = 0;
-    int bytes_written = write(all_handles->pfds[fd_index].fd, all_handles->writing_buffers[fd_index].data,
-                              all_handles->writing_buffers[fd_index].size);
+    int bytes_written =
+        write(fd, all_handles->writing_buffers[fd_index].data, all_handles->writing_buffers[fd_index].size);
     if (bytes_written > 0)
         DynamicBufferTrimLeft(&all_handles->writing_buffers[fd_index], bytes_written);
     else if (bytes_written == 0) {
-        printf("Error writing: %s\n", strerror(errno));
+        close(fd);
+        printf("Client disconnected\n");
         Erase(all_handles, fd_index);
         return 1;
     } else {
-        printf("Client disconnected\n");
+        close(fd);
+        printf("Error writing: %s\n", strerror(errno));
         Erase(all_handles, fd_index);
         return 1;
     }
@@ -423,6 +514,82 @@ static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
 static void PutDebuggerArgsInDebuggerInstance(const struct DebuggerParameters* parameters,
                                               struct GDBInstance* instance) {
     DynamicStringArrayCopy(&parameters->debugger_args, &instance->debugger_args);
+}
+
+// The result should be freed
+static char* MakeDebuggerOutputTag(const char* human_readable_handle_name) {
+    const char* debugger_name = "GDB ";
+    const size_t debugger_name_length = strlen(debugger_name);
+    char* tag = calloc(debugger_name_length + strlen(human_readable_handle_name) + 1, sizeof(char));
+    strcpy(tag, debugger_name);
+    strcpy(tag + debugger_name_length, human_readable_handle_name);
+    return tag;
+}
+
+// The result should be freed
+static char* MakeNullterminatedStringFromBuffer(char* buffer, size_t buffer_size) {
+    char* null_terminated_string = calloc(buffer_size + 1, sizeof(char));
+    memcpy(null_terminated_string, buffer, buffer_size);
+    return null_terminated_string;
+}
+
+static void PutDataAsMessageIntoBroadcast(struct DynamicStringArray* subscriber_broadcast, char* data, size_t data_size,
+                                          const char* human_readable_handle_name) {
+    char* tag = MakeDebuggerOutputTag(human_readable_handle_name);
+    char* message = MakeNullterminatedStringFromBuffer(data, data_size);
+    AppendMessageToBroadcast(subscriber_broadcast, tag, message);
+    free(tag);
+    free(message);
+}
+
+// Cleans up the debugger handles from all the high level objects
+static void CleanupDebuggerInstance(struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper) {
+    IndicateDebuggerHasStopped(bootstrapper);
+    struct BootstrapperUserdata* userdata = (struct BootstrapperUserdata*)(bootstrapper->userdata);
+    if (!userdata)
+        return;
+
+    ExpectAndEraseDebuggerHandles(all_handles);
+    GDBInstanceClear(&userdata->gdbserver_instance);
+}
+
+// Returns TRUE when the polling handles are changed (so the current polling iteration becomes invalid)
+static int PollAwareBroadcastDebuggerOutput(struct PollingHandles* all_handles, int fd_index,
+                                            struct Bootstrapper* bootstrapper,
+                                            struct DynamicStringArray* subscriber_broadcast, char* client_message,
+                                            const char* human_readable_handle_name) {
+    const int fd = all_handles->pfds[fd_index].fd;
+    errno = 0;
+    int bytes_read = read(fd, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE);
+    if (bytes_read > 0) {
+        PutDataAsMessageIntoBroadcast(subscriber_broadcast, client_message, (size_t)bytes_read,
+                                      human_readable_handle_name);
+    } else if (bytes_read == 0) {
+        CleanupDebuggerInstance(all_handles, bootstrapper);
+        return 1;
+    } else {
+        CleanupDebuggerInstance(all_handles, bootstrapper);
+        fprintf(stderr, "Error reading debugger %s: %s\n", human_readable_handle_name, strerror(errno));
+        return 1;
+    }
+
+    return 0;
+}
+
+// See 'PollAwareBroadcastDebuggerOutput' comment
+static int PollAwareBroadcastDebuggerStdout(struct PollingHandles* all_handles, int fd_index,
+                                            struct Bootstrapper* bootstrapper,
+                                            struct DynamicStringArray* subscriber_broadcast, char* client_message) {
+    return PollAwareBroadcastDebuggerOutput(all_handles, fd_index, bootstrapper, subscriber_broadcast, client_message,
+                                            "stdout");
+}
+
+// See 'PollAwareBroadcastDebuggerOutput' comment
+static int PollAwareBroadcastDebuggerStderr(struct PollingHandles* all_handles, int fd_index,
+                                            struct Bootstrapper* bootstrapper,
+                                            struct DynamicStringArray* subscriber_broadcast, char* client_message) {
+    return PollAwareBroadcastDebuggerOutput(all_handles, fd_index, bootstrapper, subscriber_broadcast, client_message,
+                                            "stderr");
 }
 
 #define POLL_TIMEOUT_MS 1000
@@ -446,8 +613,6 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
     struct BootstrapperUserdata userdata;
     GDBInstanceInit(&userdata.gdbserver_instance, debugger_parameters->debugger_path);
     BindBootstrapper(&bootstrapper, &userdata);
-
-    ForceStartDebugger(&bootstrapper);
 
     int running = 1;
     while (running) {
@@ -473,7 +638,24 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
                         }
                         break;
                     }
+                    case HANDLE_TYPE_DEBUGGER_STDOUT:
+                        if (PollAwareBroadcastDebuggerStdout(&all_handles, fd_index, &bootstrapper,
+                                                             &subscriber_broadcast, client_message)) {
+                            poll_result_invalidated = 1;
+                            continue;
+                        }
+                        break;
+                    case HANDLE_TYPE_DEBUGGER_STDERR:
+                        if (PollAwareBroadcastDebuggerStderr(&all_handles, fd_index, &bootstrapper,
+                                                             &subscriber_broadcast, client_message)) {
+                            poll_result_invalidated = 1;
+                            continue;
+                        }
+                        break;
                     }
+
+                    PutBroadcastMessagesInSubscriptionBuffers(&all_handles, &subscriber_broadcast);
+                    DynamicStringArrayClear(&subscriber_broadcast);
                 }
                 if (all_handles.pfds[fd_index].revents & POLLOUT) {
                     switch (all_handles.types[fd_index]) {
@@ -486,6 +668,29 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
                     default:
                         break;
                     }
+                }
+                if (all_handles.pfds[fd_index].revents & POLLHUP) {
+                    if (all_handles.types[fd_index] != HANDLE_TYPE_DEBUGGER_STDOUT &&
+                        all_handles.types[fd_index] != HANDLE_TYPE_DEBUGGER_STDERR) {
+                        fprintf(stderr, "FIXME: When polling, a POLLHUP has occurred on a non debugger fd. This is not "
+                                        "handled because this is not expected to happen.\n");
+                    } else {
+                        CleanupDebuggerInstance(&all_handles, &bootstrapper);
+                        poll_result_invalidated = 1;
+                        continue;
+                    }
+                }
+                if (all_handles.pfds[fd_index].revents & POLLERR) {
+                    fprintf(stderr,
+                            "FIXME: When polling, a POLLERR has occurred. This is not handled because this is not "
+                            "expected to happen.\n");
+                }
+                if (all_handles.pfds[fd_index].revents & POLLNVAL) {
+                    fprintf(stderr,
+                            "FIXME: When polling, a POLLNVAL has occurred. This is not handled because this is not "
+                            "expected to happen.\n");
+                    Erase(&all_handles, fd_index);
+                    poll_result_invalidated = 1;
                 }
             }
 
