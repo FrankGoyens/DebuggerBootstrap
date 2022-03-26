@@ -72,6 +72,8 @@ int StartGDBServer(struct GDBInstance* instance) {
     return 1;
 }
 
+static int ChildProcessExited(int waitpid_status) { return WIFEXITED(waitpid_status) || WIFSIGNALED(waitpid_status); }
+
 #define STOPPING_WAIT_TIME_MS 1000
 #define SLEEP_WAIT_TIME_MS 10
 #define MAX_WAIT_LOOPS (STOPPING_WAIT_TIME_MS / SLEEP_WAIT_TIME_MS)
@@ -88,12 +90,19 @@ int StopGDBServer(struct GDBInstance* instance) {
     kill(instance->pid, SIGTERM);
     int status;
     int loops = 0;
-    do {
-        waitpid(instance->pid, &status, WNOHANG);
 
-        sleep(SLEEP_WAIT_TIME_MS);
-        ++loops;
-    } while (!WIFEXITED(status) && !WIFSIGNALED(status) && loops <= MAX_WAIT_LOOPS);
+    waitpid(instance->pid, &status, WNOHANG);
+
+    if (!ChildProcessExited(status)) {
+
+        do {
+            waitpid(instance->pid, &status, WNOHANG);
+
+            sleep(SLEEP_WAIT_TIME_MS);
+            ++loops;
+        } while (!ChildProcessExited(status) && loops <= MAX_WAIT_LOOPS);
+    }
+
     if (loops == MAX_WAIT_LOOPS)
         kill(instance->pid, SIGKILL);
 
