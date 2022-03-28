@@ -314,17 +314,13 @@ static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_ind
 }
 
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
-                                    struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, int* running,
+                                    struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper,
                                     struct DynamicStringArray* subscriber_broadcast) {
     errno = 0;
     int read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 
     if (read_size > 0) {
         DynamicBufferAppend(&all_handles->reading_buffers[fd_index], client_message, read_size);
-        if (client_message[0] == 'q') {
-            printf("exit requested\n");
-            *running = 0;
-        }
         while (InterpretClientData(all_handles, fd_index, bootstrapper, subscriber_broadcast)) {
         }
     } else if (read_size < 0) {
@@ -470,13 +466,12 @@ static int DebuggerProcessIsRunning(struct Bootstrapper* bootstrapper) {
 
 // Returns true when the current poll result is invalidated
 static int ReceivePollAware(struct PollingHandles* all_handles, size_t fd_index, char* client_message,
-                            struct Bootstrapper* bootstrapper, int* running,
-                            struct DynamicStringArray* subscriber_broadcast) {
+                            struct Bootstrapper* bootstrapper, struct DynamicStringArray* subscriber_broadcast) {
     size_t current_size = all_handles->size;
     const int debugger_is_running = DebuggerProcessIsRunning(bootstrapper);
 
     RecieveClientSocketData(all_handles->pfds[fd_index].fd, fd_index, client_message, all_handles, bootstrapper,
-                            running, subscriber_broadcast);
+                            subscriber_broadcast);
 
     if ((debugger_is_running != DebuggerProcessIsRunning(bootstrapper))) {
         AddDebuggerHandlesToPollingHandlesIfRunning(all_handles, bootstrapper);
@@ -614,6 +609,114 @@ static void InitToplevelPolling(struct ToplevelPolling* toplevel_polling, int so
     BindBootstrapper(&toplevel_polling->bootstrapper, &toplevel_polling->bound_bootstrapper_parameters);
 }
 
+static void DeinitToplevelPolling(struct ToplevelPolling* toplevel_polling) {
+    GDBInstanceDeinit(&toplevel_polling->bound_bootstrapper_parameters.gdbserver_instance);
+    DynamicStringArrayDeinit(&toplevel_polling->subscriber_broadcast);
+    Deinit(&toplevel_polling->all_handles);
+    BootstrapperDeinit(&toplevel_polling->bootstrapper);
+}
+
+// Returns TRUE when the poll result is invalidated
+static int DoPollIn(struct ToplevelPolling* toplevel_polling, size_t fd_index) {
+    struct PollingHandles* all_handles = &toplevel_polling->all_handles;
+    switch (all_handles->types[fd_index]) {
+    case HANDLE_TYPE_SERVER_SOCKET:
+        AddClientSocket(all_handles->pfds[fd_index].fd, all_handles);
+        // A new handle is added in all_handles, so further indexes might be invalid now
+        return 1;
+    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
+    case HANDLE_TYPE_CLIENT_SOCKET: {
+        if (ReceivePollAware(all_handles, fd_index, toplevel_polling->client_message, &toplevel_polling->bootstrapper,
+                             &toplevel_polling->subscriber_broadcast)) {
+            return 1;
+        }
+        break;
+    }
+    case HANDLE_TYPE_DEBUGGER_STDOUT:
+        if (PollAwareBroadcastDebuggerStdout(all_handles, fd_index, &toplevel_polling->bootstrapper,
+                                             &toplevel_polling->subscriber_broadcast,
+                                             toplevel_polling->client_message)) {
+            return 1;
+        }
+        break;
+    case HANDLE_TYPE_DEBUGGER_STDERR:
+        if (PollAwareBroadcastDebuggerStderr(all_handles, fd_index, &toplevel_polling->bootstrapper,
+                                             &toplevel_polling->subscriber_broadcast,
+                                             toplevel_polling->client_message)) {
+            return 1;
+        }
+        break;
+    }
+
+    PutBroadcastMessagesInSubscriptionBuffers(all_handles, &toplevel_polling->subscriber_broadcast);
+    DynamicStringArrayClear(&toplevel_polling->subscriber_broadcast);
+    return 0;
+}
+
+// Returns TRUE when the poll result is invalidated
+static int DoPollOut(struct PollingHandles* all_handles, size_t fd_index) {
+    switch (all_handles->types[fd_index]) {
+    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
+        if (WritePollAware(all_handles, fd_index)) {
+            return 1;
+        }
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+// Returns TRUE when the poll result is invalidated
+static int DoPollHup(struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, size_t fd_index) {
+    if (all_handles->types[fd_index] != HANDLE_TYPE_DEBUGGER_STDOUT &&
+        all_handles->types[fd_index] != HANDLE_TYPE_DEBUGGER_STDERR) {
+        fprintf(stderr, "FIXME: When polling, a POLLHUP has occurred on a non debugger fd. This is not "
+                        "handled because this is not expected to happen.\n");
+    } else {
+        CleanupDebuggerInstance(all_handles, bootstrapper);
+        return 1;
+    }
+    return 0;
+}
+
+static void PollIteration(int ready, struct ToplevelPolling* toplevel_polling, int* running) {
+    if (ready > 0) {
+        int poll_result_invalidated = 0;
+        for (size_t fd_index = 0; fd_index < toplevel_polling->all_handles.size && !poll_result_invalidated;
+             ++fd_index) {
+            if (toplevel_polling->all_handles.pfds[fd_index].revents & POLLIN) {
+                if (DoPollIn(toplevel_polling, fd_index))
+                    break;
+            }
+            if (toplevel_polling->all_handles.pfds[fd_index].revents & POLLOUT) {
+                if (DoPollOut(&toplevel_polling->all_handles, fd_index))
+                    break;
+            }
+            if (toplevel_polling->all_handles.pfds[fd_index].revents & POLLHUP) {
+                if (DoPollHup(&toplevel_polling->all_handles, &toplevel_polling->bootstrapper, fd_index))
+                    break;
+            }
+            if (toplevel_polling->all_handles.pfds[fd_index].revents & POLLERR) {
+                fprintf(stderr, "FIXME: When polling, a POLLERR has occurred. This is not handled because this is not "
+                                "expected to happen.\n");
+            }
+            if (toplevel_polling->all_handles.pfds[fd_index].revents & POLLNVAL) {
+                fprintf(stderr, "FIXME: When polling, a POLLNVAL has occurred. This is not handled because this is not "
+                                "expected to happen.\n");
+                Erase(&toplevel_polling->all_handles, fd_index);
+                break;
+            }
+        }
+
+    } else if (ready < 0) {
+        fprintf(stderr, "poll failed\n");
+        *running = 0;
+    } else {
+        printf("I do nothing this time %lu\n", ++toplevel_polling->idle_counter);
+    }
+}
+
 #define POLL_TIMEOUT_MS 1000
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
@@ -622,109 +725,20 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
 
     printf("Waiting for incoming connections\n");
 
-    struct ToplevelPolling top_level_polling;
-    InitToplevelPolling(&top_level_polling, socket_desc, debugger_parameters);
+    struct ToplevelPolling toplevel_polling;
+    InitToplevelPolling(&toplevel_polling, socket_desc, debugger_parameters);
 
     int running = 1;
     while (running) {
-        ClearPollWriteFlags(&top_level_polling.all_handles);
-        SetPollWriteFlagsWhereWritebuffersHaveData(&top_level_polling.all_handles,
-                                                   &top_level_polling.subscriber_broadcast);
-        int ready = poll(top_level_polling.all_handles.pfds, top_level_polling.all_handles.size, POLL_TIMEOUT_MS);
-        if (ready > 0) {
-            int poll_result_invalidated = 0;
-            for (size_t fd_index = 0; fd_index < top_level_polling.all_handles.size && !poll_result_invalidated;
-                 ++fd_index) {
-                if (top_level_polling.all_handles.pfds[fd_index].revents & POLLIN) {
-                    switch (top_level_polling.all_handles.types[fd_index]) {
-                    case HANDLE_TYPE_SERVER_SOCKET:
-                        AddClientSocket(top_level_polling.all_handles.pfds[fd_index].fd,
-                                        &top_level_polling.all_handles);
-                        // A new handle is added in all_handles, so further indexes might be invalid now
-                        poll_result_invalidated = 1;
-                        continue;
-                    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
-                    case HANDLE_TYPE_CLIENT_SOCKET: {
-                        if (ReceivePollAware(&top_level_polling.all_handles, fd_index, top_level_polling.client_message,
-                                             &top_level_polling.bootstrapper, &running,
-                                             &top_level_polling.subscriber_broadcast)) {
-                            poll_result_invalidated = 1;
-                            continue;
-                        }
-                        break;
-                    }
-                    case HANDLE_TYPE_DEBUGGER_STDOUT:
-                        if (PollAwareBroadcastDebuggerStdout(
-                                &top_level_polling.all_handles, fd_index, &top_level_polling.bootstrapper,
-                                &top_level_polling.subscriber_broadcast, top_level_polling.client_message)) {
-                            poll_result_invalidated = 1;
-                            continue;
-                        }
-                        break;
-                    case HANDLE_TYPE_DEBUGGER_STDERR:
-                        if (PollAwareBroadcastDebuggerStderr(
-                                &top_level_polling.all_handles, fd_index, &top_level_polling.bootstrapper,
-                                &top_level_polling.subscriber_broadcast, top_level_polling.client_message)) {
-                            poll_result_invalidated = 1;
-                            continue;
-                        }
-                        break;
-                    }
+        ClearPollWriteFlags(&toplevel_polling.all_handles);
+        SetPollWriteFlagsWhereWritebuffersHaveData(&toplevel_polling.all_handles,
+                                                   &toplevel_polling.subscriber_broadcast);
+        int ready = poll(toplevel_polling.all_handles.pfds, toplevel_polling.all_handles.size, POLL_TIMEOUT_MS);
+        PollIteration(ready, &toplevel_polling, &running);
 
-                    PutBroadcastMessagesInSubscriptionBuffers(&top_level_polling.all_handles,
-                                                              &top_level_polling.subscriber_broadcast);
-                    DynamicStringArrayClear(&top_level_polling.subscriber_broadcast);
-                }
-                if (top_level_polling.all_handles.pfds[fd_index].revents & POLLOUT) {
-                    switch (top_level_polling.all_handles.types[fd_index]) {
-                    case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
-                        if (WritePollAware(&top_level_polling.all_handles, fd_index)) {
-                            poll_result_invalidated = 1;
-                            continue;
-                        }
-                        break;
-                    default:
-                        break;
-                    }
-                }
-                if (top_level_polling.all_handles.pfds[fd_index].revents & POLLHUP) {
-                    if (top_level_polling.all_handles.types[fd_index] != HANDLE_TYPE_DEBUGGER_STDOUT &&
-                        top_level_polling.all_handles.types[fd_index] != HANDLE_TYPE_DEBUGGER_STDERR) {
-                        fprintf(stderr, "FIXME: When polling, a POLLHUP has occurred on a non debugger fd. This is not "
-                                        "handled because this is not expected to happen.\n");
-                    } else {
-                        CleanupDebuggerInstance(&top_level_polling.all_handles, &top_level_polling.bootstrapper);
-                        poll_result_invalidated = 1;
-                        continue;
-                    }
-                }
-                if (top_level_polling.all_handles.pfds[fd_index].revents & POLLERR) {
-                    fprintf(stderr,
-                            "FIXME: When polling, a POLLERR has occurred. This is not handled because this is not "
-                            "expected to happen.\n");
-                }
-                if (top_level_polling.all_handles.pfds[fd_index].revents & POLLNVAL) {
-                    fprintf(stderr,
-                            "FIXME: When polling, a POLLNVAL has occurred. This is not handled because this is not "
-                            "expected to happen.\n");
-                    Erase(&top_level_polling.all_handles, fd_index);
-                    poll_result_invalidated = 1;
-                }
-            }
-
-        } else if (ready < 0) {
-            fprintf(stderr, "poll failed\n");
-            break;
-        } else {
-            printf("I do nothing this time %lu\n", ++top_level_polling.idle_counter);
-        }
-
-        ValidateMismatches(&top_level_polling.bootstrapper);
+        ValidateMismatches(&toplevel_polling.bootstrapper);
     }
-    GDBInstanceDeinit(&top_level_polling.bound_bootstrapper_parameters.gdbserver_instance);
-    DynamicStringArrayDeinit(&top_level_polling.subscriber_broadcast);
-    Deinit(&top_level_polling.all_handles);
-    BootstrapperDeinit(&top_level_polling.bootstrapper);
+    DeinitToplevelPolling(&toplevel_polling);
 }
 
 static void ReportSocketPort(int socket_desc) {
