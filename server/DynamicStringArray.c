@@ -6,13 +6,13 @@
 
 #define DYNAMIC_STRING_ARRAY_INITIAL_CAPACITY 16
 
-void DynamicStringArrayInit(struct DynamicStringArray* string_array) {
+void DynamicStringArrayInit(DynamicStringArray* string_array) {
     string_array->size = 0;
     string_array->capacity = DYNAMIC_STRING_ARRAY_INITIAL_CAPACITY;
     string_array->data = (char**)malloc(DYNAMIC_STRING_ARRAY_INITIAL_CAPACITY * sizeof(char*));
 }
 
-void DynamicStringArrayCopy(const struct DynamicStringArray* source, struct DynamicStringArray* destination) {
+void DynamicStringArrayCopy(const DynamicStringArray* source, DynamicStringArray* destination) {
     destination->size = source->size;
     destination->capacity = source->capacity;
     destination->data = (char**)malloc(source->capacity * sizeof(char*));
@@ -23,17 +23,17 @@ void DynamicStringArrayCopy(const struct DynamicStringArray* source, struct Dyna
     }
 }
 
-void DynamicStringArrayDeinit(struct DynamicStringArray* string_array) {
+void DynamicStringArrayDeinit(DynamicStringArray* string_array) {
     DynamicStringArrayClear(string_array);
     free(string_array->data);
 }
 
-static void _extend(struct DynamicStringArray* string_array) {
+static void _extend(DynamicStringArray* string_array) {
     string_array->capacity *= 2;
     string_array->data = (char**)realloc(string_array->data, string_array->capacity * sizeof(char*));
 }
 
-void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const char* item) {
+void DynamicStringArrayAppend(DynamicStringArray* string_array, const char* item) {
     if (string_array->size == string_array->capacity)
         _extend(string_array);
     const size_t item_length = strlen(item);
@@ -42,7 +42,7 @@ void DynamicStringArrayAppend(struct DynamicStringArray* string_array, const cha
     ++string_array->size;
 }
 
-void DynamicStringArrayErase(struct DynamicStringArray* string_array, size_t at) {
+void DynamicStringArrayErase(DynamicStringArray* string_array, size_t at) {
     if (at < 0 || at >= string_array->size)
         return;
 
@@ -52,7 +52,7 @@ void DynamicStringArrayErase(struct DynamicStringArray* string_array, size_t at)
     --string_array->size;
 }
 
-void DynamicStringArrayClear(struct DynamicStringArray* string_array) {
+void DynamicStringArrayClear(DynamicStringArray* string_array) {
     for (int i = 0; i < string_array->size; ++i)
         free(string_array->data[i]);
     string_array->size = 0;

@@ -5,7 +5,7 @@
 
 #include "DynamicStringArray.h"
 
-void ProjectDescriptionInit(struct ProjectDescription* project_description, const char* executable_name,
+void ProjectDescriptionInit(ProjectDescription* project_description, const char* executable_name,
                             const char* executable_hash) {
     const size_t name_length = strlen(executable_name);
     project_description->executable_name = (char*)malloc(name_length + 1);
@@ -20,7 +20,7 @@ void ProjectDescriptionInit(struct ProjectDescription* project_description, cons
     DynamicStringArrayInit(&project_description->executable_arguments);
 }
 
-void ProjectDescriptionDeinit(struct ProjectDescription* project_description) {
+void ProjectDescriptionDeinit(ProjectDescription* project_description) {
     free(project_description->executable_name);
     free(project_description->executable_hash);
     DynamicStringArrayDeinit(&project_description->link_dependencies_for_executable);
@@ -28,7 +28,7 @@ void ProjectDescriptionDeinit(struct ProjectDescription* project_description) {
     DynamicStringArrayDeinit(&project_description->executable_arguments);
 }
 
-void ProjectDescriptionCopy(const struct ProjectDescription* source, struct ProjectDescription* dest) {
+void ProjectDescriptionCopy(const ProjectDescription* source, ProjectDescription* dest) {
     dest->executable_name = (char*)malloc(strlen(source->executable_name) + 1);
     strcpy(dest->executable_name, source->executable_name);
     dest->executable_hash = (char*)malloc(strlen(source->executable_hash) + 1);

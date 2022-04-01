@@ -2,10 +2,10 @@
 
 #include "DynamicStringArray.h"
 
-struct DebuggerParameters {
+typedef struct DebuggerParameters {
     const char* debugger_path;
-    struct DynamicStringArray debugger_args;
-};
+    DynamicStringArray debugger_args;
+} DebuggerParameters;
 
 // Debugger parameters are not free'd by this function
-void StartEventDispatch(int port, struct DebuggerParameters*);
+void StartEventDispatch(int port, DebuggerParameters*);

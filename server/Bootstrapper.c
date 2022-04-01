@@ -7,15 +7,15 @@
 #include "DynamicStringArray.h"
 #include "ProjectDescription.h"
 
-struct BootstrapperInternal {
+typedef struct {
     int gdbIsRunning;
-    struct ProjectDescription projectDescription;
+    ProjectDescription projectDescription;
 
-    struct DynamicStringArray existing, missing, hashesForExisting;
-};
+    DynamicStringArray existing, missing, hashesForExisting;
+} BootstrapperInternal;
 
-void BootstrapperInit(struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)malloc(sizeof(struct BootstrapperInternal));
+void BootstrapperInit(Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)malloc(sizeof(BootstrapperInternal));
     internal->gdbIsRunning = 0;
     ProjectDescriptionInit(&internal->projectDescription, "", "");
     DynamicStringArrayInit(&internal->existing);
@@ -24,8 +24,8 @@ void BootstrapperInit(struct Bootstrapper* bootstrapper) {
     bootstrapper->_internal = internal;
 }
 
-void BootstrapperDeinit(struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void BootstrapperDeinit(Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (internal) {
         ProjectDescriptionDeinit(&internal->projectDescription);
         DynamicStringArrayDeinit(&internal->existing);
@@ -36,16 +36,16 @@ void BootstrapperDeinit(struct Bootstrapper* bootstrapper) {
     }
 }
 
-struct ProjectDescription* GetProjectDescription(const struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+ProjectDescription* GetProjectDescription(const Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (internal)
         return &internal->projectDescription;
 
     return NULL;
 }
 
-static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
-                      struct DynamicStringArray* existing, struct DynamicStringArray* missing) {
+static void FindFiles(Bootstrapper* bootstrapper, BootstrapperInternal* internal, DynamicStringArray* existing,
+                      DynamicStringArray* missing) {
     DynamicStringArrayClear(existing);
     DynamicStringArrayClear(missing);
     if (bootstrapper->fileExists(internal->projectDescription.executable_name, bootstrapper->userdata))
@@ -61,8 +61,7 @@ static void FindFiles(struct Bootstrapper* bootstrapper, struct BootstrapperInte
     }
 }
 
-static void CalculateHashForHashArray(struct Bootstrapper* bootstrapper, const char* file,
-                                      struct DynamicStringArray* hashes) {
+static void CalculateHashForHashArray(Bootstrapper* bootstrapper, const char* file, DynamicStringArray* hashes) {
     char* hash;
     size_t hash_size = 0;
     bootstrapper->calculateHash(file, &hash, &hash_size, bootstrapper->userdata);
@@ -72,15 +71,14 @@ static void CalculateHashForHashArray(struct Bootstrapper* bootstrapper, const c
     }
 }
 
-static void CalculateHashes(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal,
-                            struct DynamicStringArray* hashes) {
+static void CalculateHashes(Bootstrapper* bootstrapper, BootstrapperInternal* internal, DynamicStringArray* hashes) {
     DynamicStringArrayClear(hashes);
     for (int i = 0; i < internal->existing.size; ++i) {
         CalculateHashForHashArray(bootstrapper, internal->existing.data[i], hashes);
     }
 }
 
-static int FindExistingFile(const char* existing_file, const struct ProjectDescription* description, char** hash) {
+static int FindExistingFile(const char* existing_file, const ProjectDescription* description, char** hash) {
     if (strcmp(existing_file, description->executable_name) == 0) {
         *hash = description->executable_hash;
         return 1;
@@ -94,7 +92,7 @@ static int FindExistingFile(const char* existing_file, const struct ProjectDescr
     return 0;
 }
 
-static int ShouldStartGDBServer(struct BootstrapperInternal* internal) {
+static int ShouldStartGDBServer(BootstrapperInternal* internal) {
     if (internal->missing.size > 0)
         return 0;
 
@@ -114,7 +112,7 @@ static int ShouldStartGDBServer(struct BootstrapperInternal* internal) {
     return 1;
 }
 
-static int Start(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
+static int Start(Bootstrapper* bootstrapper, BootstrapperInternal* internal) {
     if (internal->gdbIsRunning)
         return 0;
     if (bootstrapper->startGDBServer(bootstrapper->userdata)) {
@@ -124,7 +122,7 @@ static int Start(struct Bootstrapper* bootstrapper, struct BootstrapperInternal*
     return 0;
 }
 
-static int Stop(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* internal) {
+static int Stop(Bootstrapper* bootstrapper, BootstrapperInternal* internal) {
     if (!internal->gdbIsRunning)
         return 0;
     if (bootstrapper->stopGDBServer(bootstrapper->userdata)) {
@@ -134,12 +132,12 @@ static int Stop(struct Bootstrapper* bootstrapper, struct BootstrapperInternal* 
     return 0;
 }
 
-static int ProjectIsLoaded(struct BootstrapperInternal* internal) {
+static int ProjectIsLoaded(BootstrapperInternal* internal) {
     return strcmp(internal->projectDescription.executable_name, "") != 0;
 }
 
-void ReceiveNewProjectDescription(struct Bootstrapper* bootstrapper, struct ProjectDescription* description) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void ReceiveNewProjectDescription(Bootstrapper* bootstrapper, ProjectDescription* description) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return;
 
@@ -154,24 +152,24 @@ void ReceiveNewProjectDescription(struct Bootstrapper* bootstrapper, struct Proj
         Start(bootstrapper, internal);
 }
 
-int IsProjectLoaded(const struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+int IsProjectLoaded(const Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return 0;
 
     return ProjectIsLoaded(internal);
 }
 
-int IsGDBServerUp(const struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+int IsGDBServerUp(const Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return 0;
 
     return internal->gdbIsRunning;
 }
 
-void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* missing_files) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void ReportMissingFiles(const Bootstrapper* bootstrapper, DynamicStringArray* missing_files) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
@@ -179,7 +177,7 @@ void ReportMissingFiles(const struct Bootstrapper* bootstrapper, struct DynamicS
     DynamicStringArrayCopy(&internal->missing, missing_files);
 }
 
-static int FindFile(const char* file, const struct DynamicStringArray* files, size_t* position) {
+static int FindFile(const char* file, const DynamicStringArray* files, size_t* position) {
     for (int i = 0; i < files->size; ++i) {
         if (strcmp(file, files->data[i]) == 0) {
             *position = i;
@@ -189,14 +187,14 @@ static int FindFile(const char* file, const struct DynamicStringArray* files, si
     return 0;
 }
 
-void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct DynamicStringArray* files,
-                                struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes) {
+void ReportWantedVsActualHashes(const Bootstrapper* bootstrapper, DynamicStringArray* files,
+                                DynamicStringArray* actual_hashes, DynamicStringArray* wanted_hashes) {
 
     DynamicStringArrayClear(files);
     DynamicStringArrayClear(actual_hashes);
     DynamicStringArrayClear(wanted_hashes);
 
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
@@ -225,8 +223,8 @@ void ReportWantedVsActualHashes(const struct Bootstrapper* bootstrapper, struct 
         fprintf(stderr, "FIXME: %s:%d -- The three arrays should have the same size\n", __FILE__, __LINE__);
 }
 
-static void UpdateFileActualHashWithoutGDBStartCheck(struct Bootstrapper* bootstrapper,
-                                                     struct BootstrapperInternal* internal, const char* file_name) {
+static void UpdateFileActualHashWithoutGDBStartCheck(Bootstrapper* bootstrapper, BootstrapperInternal* internal,
+                                                     const char* file_name) {
     if (!bootstrapper->fileExists(file_name, bootstrapper->userdata))
         return;
 
@@ -248,8 +246,8 @@ static void UpdateFileActualHashWithoutGDBStartCheck(struct Bootstrapper* bootst
     }
 }
 
-void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_name) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void UpdateFileActualHash(Bootstrapper* bootstrapper, const char* file_name) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
@@ -261,8 +259,8 @@ void UpdateFileActualHash(struct Bootstrapper* bootstrapper, const char* file_na
         Stop(bootstrapper, internal);
 }
 
-void UpdateFileActualHashes(struct Bootstrapper* bootstrapper, const struct DynamicStringArray* file_names) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void UpdateFileActualHashes(Bootstrapper* bootstrapper, const DynamicStringArray* file_names) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
@@ -275,8 +273,8 @@ void UpdateFileActualHashes(struct Bootstrapper* bootstrapper, const struct Dyna
         Stop(bootstrapper, internal);
 }
 
-void IndicateRemovedFile(struct Bootstrapper* bootstrapper, const char* file_name) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void IndicateRemovedFile(Bootstrapper* bootstrapper, const char* file_name) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal || !ProjectIsLoaded(internal))
         return;
 
@@ -294,22 +292,22 @@ void IndicateRemovedFile(struct Bootstrapper* bootstrapper, const char* file_nam
     }
 }
 
-void IndicateDebuggerHasStopped(struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+void IndicateDebuggerHasStopped(Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return;
     internal->gdbIsRunning = 0;
 }
 
-int ForceStartDebugger(struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+int ForceStartDebugger(Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return 0;
     return Start(bootstrapper, internal);
 }
 
-int ForceStopDebugger(struct Bootstrapper* bootstrapper) {
-    struct BootstrapperInternal* internal = (struct BootstrapperInternal*)bootstrapper->_internal;
+int ForceStopDebugger(Bootstrapper* bootstrapper) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
     if (!internal)
         return 0;
     return Stop(bootstrapper, internal);

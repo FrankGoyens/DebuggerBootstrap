@@ -30,33 +30,33 @@ enum HandleType {
     HANDLE_TYPE_DEBUGGER_STDERR
 };
 
-struct BoundBootstrapperParameters {
-    struct GDBInstance gdbserver_instance;
-};
+typedef struct {
+    GDBInstance gdbserver_instance;
+} BoundBootstrapperParameters;
 
-struct DynamicBuffer {
+typedef struct {
     char* data;
     size_t size;
     size_t capacity;
-};
+} DynamicBuffer;
 
 #define DYNAMIC_BUFFER_INITIAL_SIZE 16
 
-void DynamicBufferInit(struct DynamicBuffer* buffer) {
+void DynamicBufferInit(DynamicBuffer* buffer) {
     buffer->size = 0;
     buffer->capacity = DYNAMIC_BUFFER_INITIAL_SIZE;
     buffer->data = (char*)malloc(DYNAMIC_BUFFER_INITIAL_SIZE);
 }
 
-void DynamicBufferDeinit(struct DynamicBuffer* buffer) { free(buffer->data); }
+void DynamicBufferDeinit(DynamicBuffer* buffer) { free(buffer->data); }
 
-void _dynamicBufferExtend(struct DynamicBuffer* buffer, size_t minimal_new_size) {
+void _dynamicBufferExtend(DynamicBuffer* buffer, size_t minimal_new_size) {
     const size_t new_size = minimal_new_size * 2;
     buffer->data = (char*)realloc(buffer->data, new_size);
     buffer->capacity = new_size;
 }
 
-void DynamicBufferAppend(struct DynamicBuffer* buffer, const char* new_data, size_t new_data_size) {
+void DynamicBufferAppend(DynamicBuffer* buffer, const char* new_data, size_t new_data_size) {
     if (buffer->size + new_data_size >= buffer->capacity)
         _dynamicBufferExtend(buffer, buffer->size + new_data_size);
 
@@ -64,7 +64,7 @@ void DynamicBufferAppend(struct DynamicBuffer* buffer, const char* new_data, siz
     buffer->size += new_data_size;
 }
 
-void DynamicBufferTrimLeft(struct DynamicBuffer* buffer, size_t trim_amount) {
+void DynamicBufferTrimLeft(DynamicBuffer* buffer, size_t trim_amount) {
     if (trim_amount == buffer->size) {
         buffer->size = 0;
         return;
@@ -76,47 +76,47 @@ void DynamicBufferTrimLeft(struct DynamicBuffer* buffer, size_t trim_amount) {
     buffer->size -= trim_amount;
 }
 
-struct PollingHandles {
+typedef struct {
     struct pollfd* pfds;
     enum HandleType* types;
-    struct DynamicBuffer* reading_buffers;
-    struct DynamicBuffer* writing_buffers;
+    DynamicBuffer* reading_buffers;
+    DynamicBuffer* writing_buffers;
     size_t size, capacity;
-};
+} PollingHandles;
 
-static void Init(struct PollingHandles* handles) {
+static void Init(PollingHandles* handles) {
     handles->size = 0;
     handles->capacity = 1;
     handles->pfds = (struct pollfd*)calloc(sizeof(struct pollfd), handles->capacity);
     handles->types = (enum HandleType*)calloc(sizeof(enum HandleType), handles->capacity);
-    handles->reading_buffers = (struct DynamicBuffer*)malloc(sizeof(struct DynamicBuffer) * handles->capacity);
-    handles->writing_buffers = (struct DynamicBuffer*)malloc(sizeof(struct DynamicBuffer) * handles->capacity);
+    handles->reading_buffers = (DynamicBuffer*)malloc(sizeof(DynamicBuffer) * handles->capacity);
+    handles->writing_buffers = (DynamicBuffer*)malloc(sizeof(DynamicBuffer) * handles->capacity);
 }
 
-static void FreeDynamicBufferArray(struct DynamicBuffer* dynamic_buffers, size_t n) {
+static void FreeDynamicBufferArray(DynamicBuffer* dynamic_buffers, size_t n) {
     for (size_t i = 0; i < n; ++i)
         DynamicBufferDeinit(&dynamic_buffers[i]);
     free(dynamic_buffers);
 }
 
-static void Deinit(struct PollingHandles* handles) {
+static void Deinit(PollingHandles* handles) {
     free(handles->pfds);
     free(handles->types);
     FreeDynamicBufferArray(handles->reading_buffers, handles->capacity);
     FreeDynamicBufferArray(handles->writing_buffers, handles->capacity);
 }
 
-static void _extend(struct PollingHandles* handles) {
+static void _extend(PollingHandles* handles) {
     handles->capacity *= 2;
     handles->pfds = realloc(handles->pfds, handles->capacity * sizeof(struct pollfd));
     handles->types = realloc(handles->types, handles->capacity * sizeof(enum HandleType));
     memset(handles->pfds + handles->size, 0, handles->size * sizeof(struct pollfd));
     memset(handles->types + handles->size, 0, handles->size * sizeof(enum HandleType));
-    handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(struct DynamicBuffer));
-    handles->writing_buffers = realloc(handles->writing_buffers, handles->capacity * sizeof(struct DynamicBuffer));
+    handles->reading_buffers = realloc(handles->reading_buffers, handles->capacity * sizeof(DynamicBuffer));
+    handles->writing_buffers = realloc(handles->writing_buffers, handles->capacity * sizeof(DynamicBuffer));
 }
 
-static void Append(struct PollingHandles* handles, int fd, short events, enum HandleType type) {
+static void Append(PollingHandles* handles, int fd, short events, enum HandleType type) {
     if (handles->size == handles->capacity)
         _extend(handles);
 
@@ -128,7 +128,7 @@ static void Append(struct PollingHandles* handles, int fd, short events, enum Ha
     ++handles->size;
 }
 
-static void Erase(struct PollingHandles* handles, size_t at) {
+static void Erase(PollingHandles* handles, size_t at) {
     if (at < 0 || at >= handles->size)
         return;
     DynamicBufferDeinit(&handles->reading_buffers[at]);
@@ -142,7 +142,7 @@ static void Erase(struct PollingHandles* handles, size_t at) {
     --handles->size;
 }
 
-static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles) {
+static void AddClientSocket(int socket_desc, PollingHandles* all_handles) {
     socklen_t c = sizeof(struct sockaddr_in);
     struct sockaddr_in client;
 
@@ -159,8 +159,7 @@ static void AddClientSocket(int socket_desc, struct PollingHandles* all_handles)
     fcntl(client_sock, F_SETFL, fcntl(client_sock, F_GETFL, 0) | O_NONBLOCK);
 }
 
-static void AddDebuggerHandlesToPollingHandles(struct PollingHandles* all_handles, int debugger_stdout,
-                                               int debugger_stderr) {
+static void AddDebuggerHandlesToPollingHandles(PollingHandles* all_handles, int debugger_stdout, int debugger_stderr) {
     Append(all_handles, debugger_stdout, POLLIN, HANDLE_TYPE_DEBUGGER_STDOUT);
     Append(all_handles, debugger_stderr, POLLIN, HANDLE_TYPE_DEBUGGER_STDERR);
 
@@ -168,10 +167,9 @@ static void AddDebuggerHandlesToPollingHandles(struct PollingHandles* all_handle
     fcntl(debugger_stderr, F_SETFL, fcntl(debugger_stderr, F_GETFL, 0) | O_NONBLOCK);
 }
 
-static void AddDebuggerHandlesToPollingHandlesIfRunning(struct PollingHandles* all_handles,
-                                                        struct Bootstrapper* bootstrapper) {
+static void AddDebuggerHandlesToPollingHandlesIfRunning(PollingHandles* all_handles, Bootstrapper* bootstrapper) {
 
-    struct BoundBootstrapperParameters* userdata = (struct BoundBootstrapperParameters*)bootstrapper->userdata;
+    BoundBootstrapperParameters* userdata = (BoundBootstrapperParameters*)bootstrapper->userdata;
     if (!userdata)
         return;
 
@@ -191,7 +189,7 @@ static void AddDebuggerHandlesToPollingHandlesIfRunning(struct PollingHandles* a
 }
 
 // When not found, returns all_handles->size
-static int FindFirstItemWithType(struct PollingHandles* all_handles, enum HandleType handle_type) {
+static int FindFirstItemWithType(PollingHandles* all_handles, enum HandleType handle_type) {
     for (int fd_index = 0; fd_index < all_handles->size; ++fd_index) {
         if (all_handles->types[fd_index] == handle_type)
             return fd_index;
@@ -200,7 +198,7 @@ static int FindFirstItemWithType(struct PollingHandles* all_handles, enum Handle
     return all_handles->size;
 }
 
-static void ExpectPresentAndErase(struct PollingHandles* all_handles, enum HandleType type,
+static void ExpectPresentAndErase(PollingHandles* all_handles, enum HandleType type,
                                   const char* message_when_not_present) {
     const int stdout_index = FindFirstItemWithType(all_handles, type);
     if (stdout_index == all_handles->size)
@@ -209,16 +207,16 @@ static void ExpectPresentAndErase(struct PollingHandles* all_handles, enum Handl
         Erase(all_handles, stdout_index);
 }
 
-static void ExpectAndEraseDebuggerHandles(struct PollingHandles* all_handles) {
+static void ExpectAndEraseDebuggerHandles(PollingHandles* all_handles) {
     ExpectPresentAndErase(all_handles, HANDLE_TYPE_DEBUGGER_STDOUT,
                           "FIXME: The debugger is running, but its stdout handle is not present\n");
     ExpectPresentAndErase(all_handles, HANDLE_TYPE_DEBUGGER_STDERR,
                           "FIXME: The debugger is running, but its stderr handle is not present\n");
 }
 
-static void RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(struct PollingHandles* all_handles,
-                                                                struct Bootstrapper* bootstrapper) {
-    struct BoundBootstrapperParameters* userdata = (struct BoundBootstrapperParameters*)bootstrapper->userdata;
+static void RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(PollingHandles* all_handles,
+                                                                Bootstrapper* bootstrapper) {
+    BoundBootstrapperParameters* userdata = (BoundBootstrapperParameters*)bootstrapper->userdata;
     if (!userdata)
         return;
 
@@ -229,8 +227,8 @@ static void RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(struct PollingHa
 }
 
 // Returns True when data was successfully interpreted
-static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_buffer,
-                                                 struct Bootstrapper* bootstrapper, size_t json_offset) {
+static int InterpretProjectDescriptionClientData(DynamicBuffer* reading_buffer, Bootstrapper* bootstrapper,
+                                                 size_t json_offset) {
     if (json_offset > reading_buffer->size)
         return 0;
     size_t null_terminator_index;
@@ -238,7 +236,7 @@ static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_b
                            &null_terminator_index)) {
         null_terminator_index += json_offset;
 
-        struct ProjectDescription description;
+        ProjectDescription description;
         if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
             printf("I got a valid project description!\n");
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index + 1);
@@ -252,8 +250,7 @@ static int InterpretProjectDescriptionClientData(struct DynamicBuffer* reading_b
     return 0;
 }
 
-static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broadcast, const char* tag,
-                                     const char* message) {
+static void AppendMessageToBroadcast(DynamicStringArray* subscriber_broadcast, const char* tag, const char* message) {
     printf("Broadcasting:\nTAG=%s\nMESSAGE=%s\n", tag, message);
     char* encoded_message = EncodeSubscriberUpdateMessage(tag, message);
     DynamicStringArrayAppend(subscriber_broadcast, encoded_message);
@@ -264,9 +261,9 @@ static void AppendMessageToBroadcast(struct DynamicStringArray* subscriber_broad
 // Returns True when data was successfully interpreted
 // When the data is unrecognizable, the buffer may be cleared without returning True
 // When the data is incomplete, the buffer will not be cleared and False is returned
-static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_index, struct Bootstrapper* bootstrapper,
-                               struct DynamicStringArray* subscriber_broadcast) {
-    struct DynamicBuffer* reading_buffer = &all_handles->reading_buffers[fd_index];
+static int InterpretClientData(PollingHandles* all_handles, size_t fd_index, Bootstrapper* bootstrapper,
+                               DynamicStringArray* subscriber_broadcast) {
+    DynamicBuffer* reading_buffer = &all_handles->reading_buffers[fd_index];
 
     size_t json_offset;
     switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
@@ -313,9 +310,8 @@ static int InterpretClientData(struct PollingHandles* all_handles, size_t fd_ind
     }
 }
 
-static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message,
-                                    struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper,
-                                    struct DynamicStringArray* subscriber_broadcast) {
+static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message, PollingHandles* all_handles,
+                                    Bootstrapper* bootstrapper, DynamicStringArray* subscriber_broadcast) {
     errno = 0;
     int read_size = recv(client_sock, client_message, CLIENT_MESSAGE_READ_BUFFER_SIZE, 0);
 
@@ -345,7 +341,7 @@ static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, 
 }
 
 static int StartGDBServer_Bound(void* userdata) {
-    struct BoundBootstrapperParameters* bootstrapper_userdata = (struct BoundBootstrapperParameters*)userdata;
+    BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)userdata;
     if (!bootstrapper_userdata) {
         return 1;
     }
@@ -353,14 +349,14 @@ static int StartGDBServer_Bound(void* userdata) {
 }
 
 static int StopGDBServer_Bound(void* userdata) {
-    struct BoundBootstrapperParameters* bootstrapper_userdata = (struct BoundBootstrapperParameters*)userdata;
+    BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)userdata;
     if (!bootstrapper_userdata) {
         return 1;
     }
     return StopGDBServer(&bootstrapper_userdata->gdbserver_instance);
 }
 
-static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) {
+static void BindBootstrapper(Bootstrapper* bootstrapper, void* userdata) {
     bootstrapper->userdata = userdata;
     bootstrapper->startGDBServer = &StartGDBServer_Bound;
     bootstrapper->stopGDBServer = &StopGDBServer_Bound;
@@ -369,7 +365,7 @@ static void BindBootstrapper(struct Bootstrapper* bootstrapper, void* userdata) 
     BootstrapperInit(bootstrapper);
 }
 
-static void CreatePollingHandlesStartingWithServerSocket(struct PollingHandles* all_handles, int socket_desc) {
+static void CreatePollingHandlesStartingWithServerSocket(PollingHandles* all_handles, int socket_desc) {
     Init(all_handles);
 
     Append(all_handles, socket_desc, POLLIN, HANDLE_TYPE_SERVER_SOCKET);
@@ -377,8 +373,8 @@ static void CreatePollingHandlesStartingWithServerSocket(struct PollingHandles* 
     fcntl(socket_desc, F_SETFL, fcntl(socket_desc, F_GETFL, 0) | O_NONBLOCK);
 }
 
-static void ValidateMissingFiles(struct Bootstrapper* bootstrapper) {
-    struct DynamicStringArray missing;
+static void ValidateMissingFiles(Bootstrapper* bootstrapper) {
+    DynamicStringArray missing;
     DynamicStringArrayInit(&missing);
     ReportMissingFiles(bootstrapper, &missing);
 
@@ -389,15 +385,15 @@ static void ValidateMissingFiles(struct Bootstrapper* bootstrapper) {
     DynamicStringArrayDeinit(&missing);
 }
 
-static void ValidateMismatchingHashes(struct Bootstrapper* bootstrapper) {
+static void ValidateMismatchingHashes(Bootstrapper* bootstrapper) {
 
-    struct DynamicStringArray files, actual_hashes, wanted_hashes;
+    DynamicStringArray files, actual_hashes, wanted_hashes;
     DynamicStringArrayInit(&files);
     DynamicStringArrayInit(&actual_hashes);
     DynamicStringArrayInit(&wanted_hashes);
     ReportWantedVsActualHashes(bootstrapper, &files, &actual_hashes, &wanted_hashes);
 
-    struct DynamicStringArray files_to_update;
+    DynamicStringArray files_to_update;
     DynamicStringArrayInit(&files_to_update);
 
     for (int i = 0; i < files.size; ++i) {
@@ -414,13 +410,13 @@ static void ValidateMismatchingHashes(struct Bootstrapper* bootstrapper) {
     DynamicStringArrayDeinit(&wanted_hashes);
 }
 
-static void ValidateMismatches(struct Bootstrapper* bootstrapper) {
+static void ValidateMismatches(Bootstrapper* bootstrapper) {
     ValidateMissingFiles(bootstrapper);
     ValidateMismatchingHashes(bootstrapper);
 }
 
-static void PutBroadcastMessagesInSubscriptionBuffer(struct DynamicStringArray* subscriber_broadcast,
-                                                     struct DynamicBuffer* subscription_buffer) {
+static void PutBroadcastMessagesInSubscriptionBuffer(DynamicStringArray* subscriber_broadcast,
+                                                     DynamicBuffer* subscription_buffer) {
     for (int i = 0; i < subscriber_broadcast->size; ++i) {
         uint8_t* header;
         size_t packet_size;
@@ -432,16 +428,16 @@ static void PutBroadcastMessagesInSubscriptionBuffer(struct DynamicStringArray* 
     }
 }
 
-static void PutBroadcastMessagesInSubscriptionBuffers(struct PollingHandles* all_handles,
-                                                      struct DynamicStringArray* subscriber_broadcast) {
+static void PutBroadcastMessagesInSubscriptionBuffers(PollingHandles* all_handles,
+                                                      DynamicStringArray* subscriber_broadcast) {
     for (int i = 0; i < all_handles->size; ++i) {
         if (all_handles->types[i] == HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION)
             PutBroadcastMessagesInSubscriptionBuffer(subscriber_broadcast, &all_handles->writing_buffers[i]);
     }
 }
 
-static void SetPollWriteFlagsWhereWritebuffersHaveData(struct PollingHandles* polling_handles,
-                                                       const struct DynamicStringArray* broadcast_buffer) {
+static void SetPollWriteFlagsWhereWritebuffersHaveData(PollingHandles* polling_handles,
+                                                       const DynamicStringArray* broadcast_buffer) {
 
     for (size_t i = 0; i < polling_handles->size; ++i) {
         if (polling_handles->writing_buffers[i].size > 0)
@@ -449,24 +445,23 @@ static void SetPollWriteFlagsWhereWritebuffersHaveData(struct PollingHandles* po
     }
 }
 
-static void ClearPollWriteFlags(struct PollingHandles* polling_handles) {
+static void ClearPollWriteFlags(PollingHandles* polling_handles) {
     for (size_t i = 0; i < polling_handles->size; ++i) {
         polling_handles->pfds[i].events &= ~POLLOUT;
     }
 }
 
 // Actually checks whether the PID is set, instead of relying on the bootstrapper's perspective
-static int DebuggerProcessIsRunning(struct Bootstrapper* bootstrapper) {
-    struct BoundBootstrapperParameters* bootstrapper_userdata =
-        (struct BoundBootstrapperParameters*)bootstrapper->userdata;
+static int DebuggerProcessIsRunning(Bootstrapper* bootstrapper) {
+    BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)bootstrapper->userdata;
     if (!bootstrapper_userdata)
         return 0;
     return bootstrapper_userdata->gdbserver_instance.pid != NO_PID;
 }
 
 // Returns true when the current poll result is invalidated
-static int ReceivePollAware(struct PollingHandles* all_handles, size_t fd_index, char* client_message,
-                            struct Bootstrapper* bootstrapper, struct DynamicStringArray* subscriber_broadcast) {
+static int ReceivePollAware(PollingHandles* all_handles, size_t fd_index, char* client_message,
+                            Bootstrapper* bootstrapper, DynamicStringArray* subscriber_broadcast) {
     size_t current_size = all_handles->size;
     const int debugger_is_running = DebuggerProcessIsRunning(bootstrapper);
 
@@ -486,7 +481,7 @@ static int ReceivePollAware(struct PollingHandles* all_handles, size_t fd_index,
 }
 
 // Returns true when the current poll result is invalidated
-static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
+static int WritePollAware(PollingHandles* all_handles, size_t fd_index) {
     const int fd = all_handles->pfds[fd_index].fd;
     errno = 0;
     int bytes_written =
@@ -507,8 +502,7 @@ static int WritePollAware(struct PollingHandles* all_handles, size_t fd_index) {
     return 0;
 }
 
-static void PutDebuggerArgsInDebuggerInstance(const struct DebuggerParameters* parameters,
-                                              struct GDBInstance* instance) {
+static void PutDebuggerArgsInDebuggerInstance(const DebuggerParameters* parameters, GDBInstance* instance) {
     DynamicStringArrayCopy(&parameters->debugger_args, &instance->debugger_args);
 }
 
@@ -529,7 +523,7 @@ static char* MakeNullterminatedStringFromBuffer(char* buffer, size_t buffer_size
     return null_terminated_string;
 }
 
-static void PutDataAsMessageIntoBroadcast(struct DynamicStringArray* subscriber_broadcast, char* data, size_t data_size,
+static void PutDataAsMessageIntoBroadcast(DynamicStringArray* subscriber_broadcast, char* data, size_t data_size,
                                           const char* human_readable_handle_name) {
     char* tag = MakeDebuggerOutputTag(human_readable_handle_name);
     char* message = MakeNullterminatedStringFromBuffer(data, data_size);
@@ -539,9 +533,9 @@ static void PutDataAsMessageIntoBroadcast(struct DynamicStringArray* subscriber_
 }
 
 // Cleans up the debugger handles from all the high level objects
-static void CleanupDebuggerInstance(struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper) {
+static void CleanupDebuggerInstance(PollingHandles* all_handles, Bootstrapper* bootstrapper) {
     IndicateDebuggerHasStopped(bootstrapper);
-    struct BoundBootstrapperParameters* userdata = (struct BoundBootstrapperParameters*)(bootstrapper->userdata);
+    BoundBootstrapperParameters* userdata = (BoundBootstrapperParameters*)(bootstrapper->userdata);
     if (!userdata)
         return;
 
@@ -550,9 +544,8 @@ static void CleanupDebuggerInstance(struct PollingHandles* all_handles, struct B
 }
 
 // Returns TRUE when the polling handles are changed (so the current polling iteration becomes invalid)
-static int PollAwareBroadcastDebuggerOutput(struct PollingHandles* all_handles, int fd_index,
-                                            struct Bootstrapper* bootstrapper,
-                                            struct DynamicStringArray* subscriber_broadcast, char* client_message,
+static int PollAwareBroadcastDebuggerOutput(PollingHandles* all_handles, int fd_index, Bootstrapper* bootstrapper,
+                                            DynamicStringArray* subscriber_broadcast, char* client_message,
                                             const char* human_readable_handle_name) {
     const int fd = all_handles->pfds[fd_index].fd;
     errno = 0;
@@ -573,32 +566,30 @@ static int PollAwareBroadcastDebuggerOutput(struct PollingHandles* all_handles, 
 }
 
 // See 'PollAwareBroadcastDebuggerOutput' comment
-static int PollAwareBroadcastDebuggerStdout(struct PollingHandles* all_handles, int fd_index,
-                                            struct Bootstrapper* bootstrapper,
-                                            struct DynamicStringArray* subscriber_broadcast, char* client_message) {
+static int PollAwareBroadcastDebuggerStdout(PollingHandles* all_handles, int fd_index, Bootstrapper* bootstrapper,
+                                            DynamicStringArray* subscriber_broadcast, char* client_message) {
     return PollAwareBroadcastDebuggerOutput(all_handles, fd_index, bootstrapper, subscriber_broadcast, client_message,
                                             "stdout");
 }
 
 // See 'PollAwareBroadcastDebuggerOutput' comment
-static int PollAwareBroadcastDebuggerStderr(struct PollingHandles* all_handles, int fd_index,
-                                            struct Bootstrapper* bootstrapper,
-                                            struct DynamicStringArray* subscriber_broadcast, char* client_message) {
+static int PollAwareBroadcastDebuggerStderr(PollingHandles* all_handles, int fd_index, Bootstrapper* bootstrapper,
+                                            DynamicStringArray* subscriber_broadcast, char* client_message) {
     return PollAwareBroadcastDebuggerOutput(all_handles, fd_index, bootstrapper, subscriber_broadcast, client_message,
                                             "stderr");
 }
 
-struct ToplevelPolling {
-    struct PollingHandles all_handles;
-    struct DynamicStringArray subscriber_broadcast;
+typedef struct {
+    PollingHandles all_handles;
+    DynamicStringArray subscriber_broadcast;
     size_t idle_counter; // Used for logging a message when the poll exits through its timeout
     char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE]; // A buffer used for reading data from poll handles
-    struct Bootstrapper bootstrapper;
-    struct BoundBootstrapperParameters bound_bootstrapper_parameters;
-};
+    Bootstrapper bootstrapper;
+    BoundBootstrapperParameters bound_bootstrapper_parameters;
+} ToplevelPolling;
 
-static void InitToplevelPolling(struct ToplevelPolling* toplevel_polling, int socket_desc,
-                                struct DebuggerParameters* debugger_parameters) {
+static void InitToplevelPolling(ToplevelPolling* toplevel_polling, int socket_desc,
+                                DebuggerParameters* debugger_parameters) {
     CreatePollingHandlesStartingWithServerSocket(&toplevel_polling->all_handles, socket_desc);
 
     DynamicStringArrayInit(&toplevel_polling->subscriber_broadcast);
@@ -609,7 +600,7 @@ static void InitToplevelPolling(struct ToplevelPolling* toplevel_polling, int so
     BindBootstrapper(&toplevel_polling->bootstrapper, &toplevel_polling->bound_bootstrapper_parameters);
 }
 
-static void DeinitToplevelPolling(struct ToplevelPolling* toplevel_polling) {
+static void DeinitToplevelPolling(ToplevelPolling* toplevel_polling) {
     GDBInstanceDeinit(&toplevel_polling->bound_bootstrapper_parameters.gdbserver_instance);
     DynamicStringArrayDeinit(&toplevel_polling->subscriber_broadcast);
     Deinit(&toplevel_polling->all_handles);
@@ -617,8 +608,8 @@ static void DeinitToplevelPolling(struct ToplevelPolling* toplevel_polling) {
 }
 
 // Returns TRUE when the poll result is invalidated
-static int DoPollIn(struct ToplevelPolling* toplevel_polling, size_t fd_index) {
-    struct PollingHandles* all_handles = &toplevel_polling->all_handles;
+static int DoPollIn(ToplevelPolling* toplevel_polling, size_t fd_index) {
+    PollingHandles* all_handles = &toplevel_polling->all_handles;
     switch (all_handles->types[fd_index]) {
     case HANDLE_TYPE_SERVER_SOCKET:
         AddClientSocket(all_handles->pfds[fd_index].fd, all_handles);
@@ -654,7 +645,7 @@ static int DoPollIn(struct ToplevelPolling* toplevel_polling, size_t fd_index) {
 }
 
 // Returns TRUE when the poll result is invalidated
-static int DoPollOut(struct PollingHandles* all_handles, size_t fd_index) {
+static int DoPollOut(PollingHandles* all_handles, size_t fd_index) {
     switch (all_handles->types[fd_index]) {
     case HANDLE_TYPE_CLIENT_SOCKET_WITH_SUBSCRIPTION:
         if (WritePollAware(all_handles, fd_index)) {
@@ -668,7 +659,7 @@ static int DoPollOut(struct PollingHandles* all_handles, size_t fd_index) {
 }
 
 // Returns TRUE when the poll result is invalidated
-static int DoPollHup(struct PollingHandles* all_handles, struct Bootstrapper* bootstrapper, size_t fd_index) {
+static int DoPollHup(PollingHandles* all_handles, Bootstrapper* bootstrapper, size_t fd_index) {
     if (all_handles->types[fd_index] != HANDLE_TYPE_DEBUGGER_STDOUT &&
         all_handles->types[fd_index] != HANDLE_TYPE_DEBUGGER_STDERR) {
         fprintf(stderr, "FIXME: When polling, a POLLHUP has occurred on a non debugger fd. This is not "
@@ -680,7 +671,7 @@ static int DoPollHup(struct PollingHandles* all_handles, struct Bootstrapper* bo
     return 0;
 }
 
-static void PollIteration(int ready, struct ToplevelPolling* toplevel_polling, int* running) {
+static void PollIteration(int ready, ToplevelPolling* toplevel_polling, int* running) {
     if (ready > 0) {
         int poll_result_invalidated = 0;
         for (size_t fd_index = 0; fd_index < toplevel_polling->all_handles.size && !poll_result_invalidated;
@@ -719,13 +710,12 @@ static void PollIteration(int ready, struct ToplevelPolling* toplevel_polling, i
 
 #define POLL_TIMEOUT_MS 1000
 
-static void StartRecievingData(int socket_desc, struct sockaddr_in* server,
-                               struct DebuggerParameters* debugger_parameters) {
+static void StartRecievingData(int socket_desc, struct sockaddr_in* server, DebuggerParameters* debugger_parameters) {
     listen(socket_desc, 3);
 
     printf("Waiting for incoming connections\n");
 
-    struct ToplevelPolling toplevel_polling;
+    ToplevelPolling toplevel_polling;
     InitToplevelPolling(&toplevel_polling, socket_desc, debugger_parameters);
 
     int running = 1;
@@ -752,7 +742,7 @@ static void ReportSocketPort(int socket_desc) {
         fprintf(stderr, "Something went wrong retrieving server socket name: %s\n", strerror(errno));
 }
 
-void StartEventDispatch(int port, struct DebuggerParameters* debugger_parameters) {
+void StartEventDispatch(int port, DebuggerParameters* debugger_parameters) {
     int socket_desc;
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
 

@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
     struct arguments arguments;
     RetrieveArguments(argc, argv, &arguments);
 
-    struct DebuggerParameters debugger_arguments;
+    DebuggerParameters debugger_arguments;
     debugger_arguments.debugger_path = arguments.gdbserver_binary;
     DynamicStringArrayInit(&debugger_arguments.debugger_args);
 

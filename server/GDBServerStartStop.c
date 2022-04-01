@@ -8,35 +8,35 @@
 #include <unistd.h>
 #include <wait.h>
 
-static void SetHandleDefaults(struct GDBInstance* instance) {
+static void SetHandleDefaults(GDBInstance* instance) {
     instance->pid = NO_PID;
     instance->stdout_handle = -1;
     instance->stderr_handle = -1;
 }
 
-void GDBInstanceInit(struct GDBInstance* instance, const char* debugger_path) {
+void GDBInstanceInit(GDBInstance* instance, const char* debugger_path) {
     SetHandleDefaults(instance);
     instance->debugger_path = (char*)malloc(sizeof(char) * (strlen(debugger_path) + 1));
     strcpy(instance->debugger_path, debugger_path);
     DynamicStringArrayInit(&instance->debugger_args);
 }
 
-void GDBInstanceDeinit(struct GDBInstance* instance) {
+void GDBInstanceDeinit(GDBInstance* instance) {
     free(instance);
     free(instance->debugger_path);
 }
 
-static void CloseStdOutputs(struct GDBInstance* instance) {
+static void CloseStdOutputs(GDBInstance* instance) {
     close(instance->stdout_handle);
     close(instance->stderr_handle);
 }
 
-void GDBInstanceClear(struct GDBInstance* instance) {
+void GDBInstanceClear(GDBInstance* instance) {
     CloseStdOutputs(instance);
     SetHandleDefaults(instance);
 }
 
-int StartGDBServer(struct GDBInstance* instance) {
+int StartGDBServer(GDBInstance* instance) {
 
     if (instance->pid != NO_PID)
         return 1; // Already running
@@ -81,7 +81,7 @@ static int ChildProcessExited(int waitpid_status) { return WIFEXITED(waitpid_sta
 // First signals SIGTERM, then waits up to STOPPING_WAIT_TIME_MS for GDB server to stop
 // When the GDB server has not stopped after STOPPING_WAIT_TIME_MS, SIGKILL is sent, and it is assumed that the GDB
 // server will stop
-int StopGDBServer(struct GDBInstance* instance) {
+int StopGDBServer(GDBInstance* instance) {
     if (instance->pid == NO_PID)
         return 1;
 

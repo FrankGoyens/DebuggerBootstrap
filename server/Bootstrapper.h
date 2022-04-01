@@ -2,10 +2,10 @@
 
 #include <stddef.h>
 
-struct ProjectDescription;
-struct DynamicStringArray;
+typedef struct ProjectDescription ProjectDescription;
+typedef struct DynamicStringArray DynamicStringArray;
 
-struct Bootstrapper {
+typedef struct Bootstrapper {
     void* userdata;
     int (*startGDBServer)(void*);
     int (*stopGDBServer)(void*);
@@ -13,38 +13,38 @@ struct Bootstrapper {
     void (*calculateHash)(const char*, char**, size_t*, void*);
 
     void* _internal;
-};
+} Bootstrapper;
 
-void BootstrapperInit(struct Bootstrapper*);
-void BootstrapperDeinit(struct Bootstrapper*);
+void BootstrapperInit(Bootstrapper*);
+void BootstrapperDeinit(Bootstrapper*);
 
-struct ProjectDescription* GetProjectDescription(const struct Bootstrapper*);
+ProjectDescription* GetProjectDescription(const Bootstrapper*);
 
 // Ownership of the project description is transferred
-void ReceiveNewProjectDescription(struct Bootstrapper*, struct ProjectDescription*);
-int IsProjectLoaded(const struct Bootstrapper*);
+void ReceiveNewProjectDescription(Bootstrapper*, ProjectDescription*);
+int IsProjectLoaded(const Bootstrapper*);
 // Up/Down status, according to the Boostrapper
-int IsGDBServerUp(const struct Bootstrapper*);
+int IsGDBServerUp(const Bootstrapper*);
 // Output argument must be initialized and will be owned by the caller
-void ReportMissingFiles(const struct Bootstrapper*, struct DynamicStringArray*);
+void ReportMissingFiles(const Bootstrapper*, DynamicStringArray*);
 // Output arguments must be initialized and will be owned by the caller
-void ReportWantedVsActualHashes(const struct Bootstrapper*, struct DynamicStringArray* files,
-                                struct DynamicStringArray* actual_hashes, struct DynamicStringArray* wanted_hashes);
+void ReportWantedVsActualHashes(const Bootstrapper*, DynamicStringArray* files, DynamicStringArray* actual_hashes,
+                                DynamicStringArray* wanted_hashes);
 // If the given file previously did not exist, the entry is updated when now it does exist
 // The actual hash is calculated for the given file, if the file is present in the project description
 // Will trigger a StartGDBServer when every file exists and matches
-void UpdateFileActualHash(struct Bootstrapper*, const char* file_name);
+void UpdateFileActualHash(Bootstrapper*, const char* file_name);
 // Same as UpdateFileActualHash, except checking whether the GDBServer should start happens after all files have been
 // processed
-void UpdateFileActualHashes(struct Bootstrapper*, const struct DynamicStringArray* file_names);
-void IndicateRemovedFile(struct Bootstrapper*, const char* file_name);
+void UpdateFileActualHashes(Bootstrapper*, const DynamicStringArray* file_names);
+void IndicateRemovedFile(Bootstrapper*, const char* file_name);
 
-void IndicateDebuggerHasStopped(struct Bootstrapper*);
+void IndicateDebuggerHasStopped(Bootstrapper*);
 
 // Returns FALSE when the debugger is already running
 // Returns TRUE when the debugger was not running and was succesfully started
-int ForceStartDebugger(struct Bootstrapper*);
+int ForceStartDebugger(Bootstrapper*);
 
 // Returns FALSE when the debugger was not running
 // Returns TRUE when the debugger was running and was succesfully stopped
-int ForceStopDebugger(struct Bootstrapper*);
+int ForceStopDebugger(Bootstrapper*);

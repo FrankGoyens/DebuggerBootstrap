@@ -6,7 +6,7 @@
 
 #include "ProjectDescription.h"
 
-static void ReadJSONArray(json_object* array, struct DynamicStringArray* dynamic_array) {
+static void ReadJSONArray(json_object* array, DynamicStringArray* dynamic_array) {
     int array_length = json_object_array_length(array);
     for (int i = 0; i < array_length; ++i) {
         json_object* dependency = json_object_array_get_idx(array, i);
@@ -15,7 +15,7 @@ static void ReadJSONArray(json_object* array, struct DynamicStringArray* dynamic
     }
 }
 
-int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescription* project_description) {
+int ProjectDescriptionLoadFromJSON(const char* json_string, ProjectDescription* project_description) {
     json_object* root = json_tokener_parse(json_string);
 
     json_object* executable_name_json = json_object_object_get(root, "executable_name");
@@ -55,12 +55,12 @@ int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescri
     return 1;
 }
 
-static void DumpIntoJSONArray(const struct DynamicStringArray* dynamic_array, json_object* array) {
+static void DumpIntoJSONArray(const DynamicStringArray* dynamic_array, json_object* array) {
     for (int i = 0; i < dynamic_array->size; ++i)
         json_object_array_add(array, json_object_new_string(dynamic_array->data[i]));
 }
 
-char* ProjectDescriptionDumpToJSON(struct ProjectDescription* const description) {
+char* ProjectDescriptionDumpToJSON(ProjectDescription* const description) {
     json_object* root = json_object_new_object();
     json_object_object_add(root, "executable_name", json_object_new_string(description->executable_name));
     json_object_object_add(root, "executable_hash", json_object_new_string(description->executable_hash));

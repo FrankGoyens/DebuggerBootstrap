@@ -1,8 +1,8 @@
 #pragma once
 
-struct ProjectDescription;
+typedef struct ProjectDescription ProjectDescription;
 
-int ProjectDescriptionLoadFromJSON(const char* json_string, struct ProjectDescription*);
+int ProjectDescriptionLoadFromJSON(const char* json_string, ProjectDescription*);
 
 // Don't forget to free() the result
-char* ProjectDescriptionDumpToJSON(struct ProjectDescription* const);
+char* ProjectDescriptionDumpToJSON(ProjectDescription* const);
