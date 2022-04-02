@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     DynamicStringArrayInit(&debugger_arguments.debugger_args);
 
     int passthrough_position;
-    if (FindPassthroughSeparator(argc, argv, &passthrough_position)) {
+    if (FindPassthroughSeparator(argc, argv, &passthrough_position) && passthrough_position > argc) {
         RetrieveArgumentsForDebugger(argc, argv, passthrough_position, &debugger_arguments);
         argc -= passthrough_position - 1; // Don't parse the passthrough arguments in our own parser
     }
