@@ -596,7 +596,7 @@ static void InitToplevelPolling(ToplevelPolling* toplevel_polling, int socket_de
 
     toplevel_polling->idle_counter = 0;
     GDBInstanceInit(&toplevel_polling->bound_bootstrapper_parameters.gdbserver_instance,
-                    debugger_parameters->debugger_path);
+                    debugger_parameters->debugger_path, &debugger_parameters->debugger_args);
     BindBootstrapper(&toplevel_polling->bootstrapper, &toplevel_polling->bound_bootstrapper_parameters);
 }
 

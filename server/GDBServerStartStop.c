@@ -14,11 +14,12 @@ static void SetHandleDefaults(GDBInstance* instance) {
     instance->stderr_handle = -1;
 }
 
-void GDBInstanceInit(GDBInstance* instance, const char* debugger_path) {
+void GDBInstanceInit(GDBInstance* instance, const char* debugger_path, const DynamicStringArray* debugger_args) {
     SetHandleDefaults(instance);
     instance->debugger_path = (char*)malloc(sizeof(char) * (strlen(debugger_path) + 1));
     strcpy(instance->debugger_path, debugger_path);
     DynamicStringArrayInit(&instance->debugger_args);
+    DynamicStringArrayCopy(debugger_args, &instance->debugger_args);
 }
 
 void GDBInstanceDeinit(GDBInstance* instance) {
@@ -43,10 +44,10 @@ static char** ConcatArguments(GDBInstance* instance, char* program_to_debug,
                                    executable_arguments->size + 1 /*null terminator*/;
     char** concatenated_arguments = (char**)malloc(sizeof(char*) * argument_amount);
     concatenated_arguments[0] = instance->debugger_path;
-    memcpy(concatenated_arguments + 1, instance->debugger_args.data, instance->debugger_args.size * sizeof(char));
+    memcpy(concatenated_arguments + 1, instance->debugger_args.data, instance->debugger_args.size * sizeof(char*));
     concatenated_arguments[instance->debugger_args.size + 1] = program_to_debug;
     memcpy(concatenated_arguments + 1 + instance->debugger_args.size + 1, executable_arguments->data,
-           executable_arguments->size * sizeof(char));
+           executable_arguments->size * sizeof(char*));
     concatenated_arguments[argument_amount - 1] = NULL;
     return concatenated_arguments;
 }
@@ -66,6 +67,9 @@ int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicS
     if (instance->pid != NO_PID)
         return 1; // Already running
 
+    char** args = ConcatArguments(instance, program_to_debug, executable_arguments);
+    PrintExecCall(args);
+
     int pipefd[2];
     int pipefd_err[2];
     int p1 = pipe(pipefd);
@@ -78,7 +82,6 @@ int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicS
         close(pipefd[1]);
         close(pipefd_err[0]);
         close(pipefd_err[1]);
-        char** args = ConcatArguments(instance, program_to_debug, executable_arguments);
         char* env[] = {NULL};
         errno = 0;
         execve(instance->debugger_path, args, env);

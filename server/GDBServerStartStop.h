@@ -11,7 +11,8 @@ typedef struct GDBInstance {
     DynamicStringArray debugger_args;
 } GDBInstance;
 
-void GDBInstanceInit(GDBInstance*, const char* debugger_path);
+// debugger_args will be copied
+void GDBInstanceInit(GDBInstance*, const char* debugger_path, const DynamicStringArray* debugger_args);
 void GDBInstanceDeinit(GDBInstance*);
 
 // Put defaults into the instance for when the debugger process has ended by external means
