@@ -341,7 +341,7 @@ static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, 
     strcpy(*hash, dummy_hash);
 }
 
-static int StartGDBServer_Bound(void* userdata, const char* program_to_debug,
+static int StartGDBServer_Bound(void* userdata, char* program_to_debug,
                                 const DynamicStringArray* executable_arguments) {
     BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)userdata;
     if (!bootstrapper_userdata) {

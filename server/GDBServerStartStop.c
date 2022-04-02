@@ -36,8 +36,32 @@ void GDBInstanceClear(GDBInstance* instance) {
     SetHandleDefaults(instance);
 }
 
-int StartGDBServer(GDBInstance* instance, const char* program_to_debug,
-                   const DynamicStringArray* executable_arguments) {
+// Result should be free'd!
+static char** ConcatArguments(GDBInstance* instance, char* program_to_debug,
+                              const DynamicStringArray* executable_arguments) {
+    const size_t argument_amount = 1 /*debugger executable*/ + instance->debugger_args.size + 1 /*program to debug*/ +
+                                   executable_arguments->size + 1 /*null terminator*/;
+    char** concatenated_arguments = (char**)malloc(sizeof(char*) * argument_amount);
+    concatenated_arguments[0] = instance->debugger_path;
+    memcpy(concatenated_arguments + 1, instance->debugger_args.data, instance->debugger_args.size * sizeof(char));
+    concatenated_arguments[instance->debugger_args.size + 1] = program_to_debug;
+    memcpy(concatenated_arguments + 1 + instance->debugger_args.size + 1, executable_arguments->data,
+           executable_arguments->size * sizeof(char));
+    concatenated_arguments[argument_amount - 1] = NULL;
+    return concatenated_arguments;
+}
+
+static void PrintExecCall(char** args) {
+    printf("GDBStart:\n");
+    int i = 0;
+    while (args[i] != NULL) {
+        printf("%s ", args[i]);
+        ++i;
+    }
+    printf("\n");
+}
+
+int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicStringArray* executable_arguments) {
 
     if (instance->pid != NO_PID)
         return 1; // Already running
@@ -54,10 +78,11 @@ int StartGDBServer(GDBInstance* instance, const char* program_to_debug,
         close(pipefd[1]);
         close(pipefd_err[0]);
         close(pipefd_err[1]);
-        char* args[] = {instance->debugger_path, NULL};
+        char** args = ConcatArguments(instance, program_to_debug, executable_arguments);
         char* env[] = {NULL};
         errno = 0;
         execve(instance->debugger_path, args, env);
+        free(args);
         fprintf(stderr, "Error calling execve in child process: %s\n", strerror(errno));
         exit(1);
     }

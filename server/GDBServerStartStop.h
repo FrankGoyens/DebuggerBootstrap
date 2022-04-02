@@ -17,5 +17,5 @@ void GDBInstanceDeinit(GDBInstance*);
 // Put defaults into the instance for when the debugger process has ended by external means
 void GDBInstanceClear(GDBInstance*);
 
-int StartGDBServer(GDBInstance*, const char* program_to_debug, const DynamicStringArray* executable_arguments);
+int StartGDBServer(GDBInstance*, char* program_to_debug, const DynamicStringArray* executable_arguments);
 int StopGDBServer(GDBInstance*);
