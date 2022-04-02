@@ -84,13 +84,39 @@ static void RetrieveArguments(int argc, char** argv, struct arguments* arguments
     printf("GDBServer binary that will be used: %s\n", arguments->gdbserver_binary);
 }
 
+// Returns TRUE when the separator was found
+static int FindPassthroughSeparator(int argc, char** argv, int* position) {
+    for (int i = 0; i < argc; ++i) {
+        if (strcmp(argv[i], "--") == 0) {
+            *position = i;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void RetrieveArgumentsForDebugger(int argc, char** argv, int passthrough_separator,
+                                         DebuggerParameters* debugger_parameters) {
+    if (passthrough_separator >= argc)
+        return;
+    for (int i = passthrough_separator + 1; i < argc; ++i) {
+        DynamicStringArrayAppend(&debugger_parameters->debugger_args, argv[i]);
+    }
+}
+
 int main(int argc, char** argv) {
+    DebuggerParameters debugger_arguments;
+    DynamicStringArrayInit(&debugger_arguments.debugger_args);
+
+    int passthrough_position;
+    if (FindPassthroughSeparator(argc, argv, &passthrough_position)) {
+        RetrieveArgumentsForDebugger(argc, argv, passthrough_position, &debugger_arguments);
+        argc -= passthrough_position - 1; // Don't parse the passthrough arguments in our own parser
+    }
+
     struct arguments arguments;
     RetrieveArguments(argc, argv, &arguments);
-
-    DebuggerParameters debugger_arguments;
     debugger_arguments.debugger_path = arguments.gdbserver_binary;
-    DynamicStringArrayInit(&debugger_arguments.debugger_args);
 
     StartEventDispatch(arguments.port, &debugger_arguments);
 
