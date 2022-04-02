@@ -269,7 +269,8 @@ static int InterpretClientData(PollingHandles* all_handles, size_t fd_index, Boo
     switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
         const int result = InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
-        AppendMessageToBroadcast(subscriber_broadcast, "PROJECT DESCRIPTION", "New project description recieved");
+        if (result)
+            AppendMessageToBroadcast(subscriber_broadcast, "PROJECT DESCRIPTION", "New project description recieved");
         return result;
     }
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_REQUEST:
