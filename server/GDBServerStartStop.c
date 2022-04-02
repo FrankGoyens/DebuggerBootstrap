@@ -36,7 +36,8 @@ void GDBInstanceClear(GDBInstance* instance) {
     SetHandleDefaults(instance);
 }
 
-int StartGDBServer(GDBInstance* instance, const DynamicStringArray* executable_arguments) {
+int StartGDBServer(GDBInstance* instance, const char* program_to_debug,
+                   const DynamicStringArray* executable_arguments) {
 
     if (instance->pid != NO_PID)
         return 1; // Already running

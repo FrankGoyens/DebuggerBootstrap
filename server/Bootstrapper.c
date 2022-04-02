@@ -112,10 +112,15 @@ static int ShouldStartGDBServer(BootstrapperInternal* internal) {
     return 1;
 }
 
+static int ProjectIsLoaded(BootstrapperInternal* internal) {
+    return strcmp(internal->projectDescription.executable_name, "") != 0;
+}
+
 static int Start(Bootstrapper* bootstrapper, BootstrapperInternal* internal) {
-    if (internal->gdbIsRunning)
+    if (internal->gdbIsRunning || !ProjectIsLoaded(internal))
         return 0;
-    if (bootstrapper->startGDBServer(bootstrapper->userdata, &internal->projectDescription.executable_arguments)) {
+    if (bootstrapper->startGDBServer(bootstrapper->userdata, internal->projectDescription.executable_name,
+                                     &internal->projectDescription.executable_arguments)) {
         internal->gdbIsRunning = 1;
         return 1;
     }
@@ -130,10 +135,6 @@ static int Stop(Bootstrapper* bootstrapper, BootstrapperInternal* internal) {
         return 1;
     }
     return 0;
-}
-
-static int ProjectIsLoaded(BootstrapperInternal* internal) {
-    return strcmp(internal->projectDescription.executable_name, "") != 0;
 }
 
 void ReceiveNewProjectDescription(Bootstrapper* bootstrapper, ProjectDescription* description) {
