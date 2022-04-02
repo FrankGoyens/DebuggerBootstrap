@@ -12,7 +12,7 @@ struct FakeUserdata {
     std::unordered_map<std::string, std::string> hashes;
 };
 
-static int FakeStartGDBServer(void*) { return 1; }
+static int FakeStartGDBServer(void*, const DynamicStringArray*) { return 1; }
 static int FakeStopGDBServer(void*) { return 1; }
 static int FakeFileExists(const char* file_name, void* userdata) {
     if (userdata) {

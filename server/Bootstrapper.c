@@ -115,7 +115,7 @@ static int ShouldStartGDBServer(BootstrapperInternal* internal) {
 static int Start(Bootstrapper* bootstrapper, BootstrapperInternal* internal) {
     if (internal->gdbIsRunning)
         return 0;
-    if (bootstrapper->startGDBServer(bootstrapper->userdata)) {
+    if (bootstrapper->startGDBServer(bootstrapper->userdata, &internal->projectDescription.executable_arguments)) {
         internal->gdbIsRunning = 1;
         return 1;
     }

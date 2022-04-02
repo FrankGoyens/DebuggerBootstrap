@@ -7,7 +7,7 @@ typedef struct DynamicStringArray DynamicStringArray;
 
 typedef struct Bootstrapper {
     void* userdata;
-    int (*startGDBServer)(void*);
+    int (*startGDBServer)(void*, const DynamicStringArray* executable_arguments);
     int (*stopGDBServer)(void*);
     int (*fileExists)(const char*, void*);
     void (*calculateHash)(const char*, char**, size_t*, void*);
