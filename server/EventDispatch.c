@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 
 #include "Bootstrapper.h"
+#include "FileHasher.h"
 #include "GDBServerStartStop.h"
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
@@ -335,10 +336,7 @@ static int FileExists(const char* file) { return access(file, F_OK) == 0; }
 static int FileExists_Bound(const char* file, void* userdata) { return FileExists(file); }
 
 static void CalculateFileHash(const char* file, char** hash, size_t* hash_size, void* userdata) {
-    const char* dummy_hash = "abcd";
-    *hash_size = strlen(dummy_hash);
-    *hash = (char*)malloc(*hash_size + 1);
-    strcpy(*hash, dummy_hash);
+    FileHasher_Do(file, hash, hash_size);
 }
 
 static int StartGDBServer_Bound(void* userdata, char* program_to_debug,
