@@ -32,7 +32,7 @@ set(DebuggerBootstrap_Sources
 	protocol/Protocol.c
 )
 
-#Everythin but main.c is put into its own library, that way it is easier to setup the test executable
+#Everything but main.c is put into its own library, that way it is easier to setup the test executable
 add_library(DebuggerBootstrap_lib STATIC ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
 target_include_directories(DebuggerBootstrap_lib PUBLIC protocol)
 
