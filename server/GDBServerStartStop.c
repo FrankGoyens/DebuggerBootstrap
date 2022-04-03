@@ -61,6 +61,15 @@ static void PrintExecCall(char** args) {
     printf("\n");
 }
 
+static int ReportPipeCreationStatus(int pipe) {
+    errno = 0;
+    if (pipe != 0) {
+        fprintf(stderr, "Error creating pipe: %s\n", strerror(errno));
+        return 0;
+    }
+    return 1;
+}
+
 int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicStringArray* executable_arguments) {
 
     if (instance->pid != NO_PID)
@@ -72,7 +81,11 @@ int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicS
     int pipefd[2];
     int pipefd_err[2];
     int p1 = pipe(pipefd);
+    if (!ReportPipeCreationStatus(p1))
+        return 0;
     int p2 = pipe(pipefd_err);
+    if (!ReportPipeCreationStatus(p2))
+        return 0;
     pid_t pid = fork();
     if (pid == 0) {
         dup2(pipefd[1], STDOUT_FILENO);

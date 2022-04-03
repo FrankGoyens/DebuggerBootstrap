@@ -192,7 +192,7 @@ static int InterpretProjectDescriptionClientData(DynamicBuffer* reading_buffer, 
     if (json_offset > reading_buffer->size)
         return 0;
     size_t null_terminator_index;
-    if (FindNullTerminator(&reading_buffer->data[json_offset], reading_buffer->size - json_offset,
+    if (FindNullTerminator((uint8_t*)&reading_buffer->data[json_offset], reading_buffer->size - json_offset,
                            &null_terminator_index)) {
         null_terminator_index += json_offset;
 
@@ -200,7 +200,6 @@ static int InterpretProjectDescriptionClientData(DynamicBuffer* reading_buffer, 
         if (ProjectDescriptionLoadFromJSON(&reading_buffer->data[json_offset], &description)) {
             printf("I got a valid project description!\n");
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index + 1);
-            const int debugger_is_running = IsGDBServerUp(bootstrapper);
             ReceiveNewProjectDescription(bootstrapper, &description);
 
             ProjectDescriptionDeinit(&description);
@@ -226,7 +225,7 @@ static int InterpretClientData(PollingHandles* all_handles, size_t fd_index, Boo
     DynamicBuffer* reading_buffer = &all_handles->reading_buffers[fd_index];
 
     size_t json_offset;
-    switch (DecodePacket(reading_buffer->data, reading_buffer->size, &json_offset)) {
+    switch (DecodePacket((uint8_t*)reading_buffer->data, reading_buffer->size, &json_offset)) {
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_PROJECT_DESCRIPTION: {
         const int result = InterpretProjectDescriptionClientData(reading_buffer, bootstrapper, json_offset);
         if (result)
@@ -240,8 +239,8 @@ static int InterpretClientData(PollingHandles* all_handles, size_t fd_index, Boo
         return 1;
     case DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE: {
         size_t null_terminator_index;
-        if (FindNullTerminator(&reading_buffer->data[PACKET_HEADER_SIZE], reading_buffer->size - PACKET_HEADER_SIZE,
-                               &null_terminator_index)) {
+        if (FindNullTerminator((uint8_t*)&reading_buffer->data[PACKET_HEADER_SIZE],
+                               reading_buffer->size - PACKET_HEADER_SIZE, &null_terminator_index)) {
             null_terminator_index += PACKET_HEADER_SIZE;
             printf("Got a subscribe response, that's odd because I'm the server\n");
             DynamicBufferTrimLeft(reading_buffer, null_terminator_index);
@@ -269,6 +268,10 @@ static int InterpretClientData(PollingHandles* all_handles, size_t fd_index, Boo
         DynamicBufferTrimLeft(reading_buffer, reading_buffer->size);
         return 0;
     }
+
+    fprintf(stderr, "FIXME: %s:%d all cases should be handled, a return should have happened by now.", __FILE__,
+            __LINE__);
+    return 0;
 }
 
 static void RecieveClientSocketData(int client_sock, size_t fd_index, char* client_message, PollingHandles* all_handles,
