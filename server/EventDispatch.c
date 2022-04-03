@@ -393,26 +393,33 @@ static void ValidateMismatchingHashes(Bootstrapper* bootstrapper) {
     DynamicStringArrayInit(&wanted_hashes);
     ReportWantedVsActualHashes(bootstrapper, &files, &actual_hashes, &wanted_hashes);
 
-    DynamicStringArray files_to_update;
-    DynamicStringArrayInit(&files_to_update);
+    UpdateFileActualHashes(bootstrapper, &files);
 
-    for (int i = 0; i < files.size; ++i) {
-        if (strcmp(actual_hashes.data[i], wanted_hashes.data[i]) != 0)
-            DynamicStringArrayAppend(&files_to_update, files.data[i]);
-    }
-
-    UpdateFileActualHashes(bootstrapper, &files_to_update);
-
-    DynamicStringArrayDeinit(&files_to_update);
+    // TODO broadcast matches mismatches
 
     DynamicStringArrayDeinit(&files);
     DynamicStringArrayDeinit(&actual_hashes);
     DynamicStringArrayDeinit(&wanted_hashes);
 }
 
-static void ValidateMismatches(Bootstrapper* bootstrapper) {
+// Actually checks whether the PID is set, instead of relying on the bootstrapper's perspective
+static int DebuggerProcessIsRunning(Bootstrapper* bootstrapper) {
+    BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)bootstrapper->userdata;
+    if (!bootstrapper_userdata)
+        return 0;
+    return bootstrapper_userdata->gdbserver_instance.pid != NO_PID;
+}
+
+static void ValidateMismatches(PollingHandles* all_handles, Bootstrapper* bootstrapper) {
+    const int debugger_is_running = DebuggerProcessIsRunning(bootstrapper);
+
     ValidateMissingFiles(bootstrapper);
     ValidateMismatchingHashes(bootstrapper);
+
+    if ((debugger_is_running != DebuggerProcessIsRunning(bootstrapper))) {
+        AddDebuggerHandlesToPollingHandlesIfRunning(all_handles, bootstrapper);
+        RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(all_handles, bootstrapper);
+    }
 }
 
 static void PutBroadcastMessagesInSubscriptionBuffer(DynamicStringArray* subscriber_broadcast,
@@ -449,14 +456,6 @@ static void ClearPollWriteFlags(PollingHandles* polling_handles) {
     for (size_t i = 0; i < polling_handles->size; ++i) {
         polling_handles->pfds[i].events &= ~POLLOUT;
     }
-}
-
-// Actually checks whether the PID is set, instead of relying on the bootstrapper's perspective
-static int DebuggerProcessIsRunning(Bootstrapper* bootstrapper) {
-    BoundBootstrapperParameters* bootstrapper_userdata = (BoundBootstrapperParameters*)bootstrapper->userdata;
-    if (!bootstrapper_userdata)
-        return 0;
-    return bootstrapper_userdata->gdbserver_instance.pid != NO_PID;
 }
 
 // Returns true when the current poll result is invalidated
@@ -500,10 +499,6 @@ static int WritePollAware(PollingHandles* all_handles, size_t fd_index) {
         return 1;
     }
     return 0;
-}
-
-static void PutDebuggerArgsInDebuggerInstance(const DebuggerParameters* parameters, GDBInstance* instance) {
-    DynamicStringArrayCopy(&parameters->debugger_args, &instance->debugger_args);
 }
 
 // The result should be freed
@@ -726,7 +721,7 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server, Debu
         int ready = poll(toplevel_polling.all_handles.pfds, toplevel_polling.all_handles.size, POLL_TIMEOUT_MS);
         PollIteration(ready, &toplevel_polling, &running);
 
-        ValidateMismatches(&toplevel_polling.bootstrapper);
+        ValidateMismatches(&toplevel_polling.all_handles, &toplevel_polling.bootstrapper);
     }
     DeinitToplevelPolling(&toplevel_polling);
 }

@@ -18,7 +18,6 @@ void GDBInstanceInit(GDBInstance* instance, const char* debugger_path, const Dyn
     SetHandleDefaults(instance);
     instance->debugger_path = (char*)malloc(sizeof(char) * (strlen(debugger_path) + 1));
     strcpy(instance->debugger_path, debugger_path);
-    DynamicStringArrayInit(&instance->debugger_args);
     DynamicStringArrayCopy(debugger_args, &instance->debugger_args);
 }
 
@@ -93,6 +92,8 @@ int StartGDBServer(GDBInstance* instance, char* program_to_debug, const DynamicS
     // Only parent process continues here
     close(pipefd[1]);
     close(pipefd_err[1]);
+
+    free(args);
 
     instance->pid = pid;
     instance->stdout_handle = pipefd[0];
