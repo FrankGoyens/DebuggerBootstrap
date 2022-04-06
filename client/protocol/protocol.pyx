@@ -39,7 +39,7 @@ def decode_packet(packet_data, message_decoder):
     if packet_type == cprotocol.DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_SUBSCRIBE_RESPONSE:
         message_json_bytes = c_packet_data[json_offset:]
         if cprotocol.FindNullTerminator(message_json_bytes, len(message_json_bytes), &null_terminator_position):
-            message_decoder.receive_subscription_response(null_terminator_position + 1 + cprotocol.PACKET_HEADER_SIZE, message_json_bytes[json_offset:null_terminator_position])
+            message_decoder.receive_subscription_response(null_terminator_position + 1 + cprotocol.PACKET_HEADER_SIZE, message_json_bytes[:null_terminator_position])
         else:
             message_decoder.receive_incomplete_response(packet_data[cprotocol.PACKET_HEADER_SIZE:])
     elif packet_type == cprotocol.DEBUGGER_BOOTSTRAP_PROTOCOL_PACKET_TYPE_INCOMPLETE:

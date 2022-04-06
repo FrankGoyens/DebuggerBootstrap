@@ -1,20 +1,31 @@
 import protocol.native_protocol as proto
 from protocol.MessageDecoder import MessageDecoder
 import socket, json, argparse, selectors
+import SubscriberUpdate
+import ClientConsoleColors, ClientConsole
+
+def print_subscriber_update(subscriber_update_json):
+    try:    
+        subscriber_update = SubscriberUpdate.from_json(subscriber_update_json)
+        color_for_print = ClientConsoleColors.get_color_for_tag(subscriber_update.tag)
+        ClientConsole.set_color(color_for_print)
+        print(subscriber_update.message)
+        ClientConsole.reset_color()
+    except SubscriberUpdate.SubscriberUpdateException:
+        pass
 
 class ClientSideMessageDecoder(MessageDecoder):
     def __init__(self, data):
         self.data = data
 
     def receive_subscription_response(self, packet_length, message_json):
-        print("Recieved subscription response: {}".format(message_json))
+        print_subscriber_update(message_json)
         self.data = self.data[packet_length:]
 
-    def receive_incomplete_response(self, incomplete_data_bytes):
-        print("Got incomplete response: {}".format(incomplete_data_bytes))
+    def receive_incomplete_response(self, _):
+        pass
 
-    def receive_unknown_response(self, unknown_data_bytes):
-        print("Got complete garbage: {}".format(unknown_data_bytes))
+    def receive_unknown_response(self, _):
         self.data = bytes()
 
 def _receiveServerData(data):
@@ -35,6 +46,8 @@ def _make_argument_parser():
 if __name__ == "__main__":
     parser = _make_argument_parser()
     args = parser.parse_args()
+
+    ClientConsole.init()
 
     selector = selectors.DefaultSelector()
 
