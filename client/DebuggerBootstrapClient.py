@@ -1,8 +1,9 @@
 import protocol.native_protocol as proto
 from protocol.MessageDecoder import MessageDecoder
-import socket, json, argparse, selectors
+import socket, json, argparse, selectors, sys
 import SubscriberUpdate
 import ClientConsoleColors, ClientConsole
+import __main__
 
 def print_subscriber_update(subscriber_update_json):
     try:    
@@ -34,33 +35,33 @@ def _receiveServerData(data):
     return decoder.data
 
 def MakeProjectDescription():
-    return {"executable_name":"test_exe", "executable_hash": "abc", "link_dependencies_for_executable": [], "link_dependencies_for_executable_hashes": []}
+    return {"executable_name":"dummy_program.exe", "executable_hash": "6dc5bcbe256ee2e3cd355bf766e7f7984935aea2", "link_dependencies_for_executable": [], "link_dependencies_for_executable_hashes": []}
 
 def _make_argument_parser():
     parser = argparse.ArgumentParser(description="DebuggerBootstrapClient -- Connect to a remote DebuggerBootstrap instance to provide info about a project that will be debugged remotely.", 
     epilog="Report bugs to https://github.com/FrankGoyens/DebuggerBootstrap/issues.")
-    parser.add_argument("HOST", default="localhost", type=str, help="Remote host of DebuggerBootstrap instance.")
-    parser.add_argument("PORT", default=0, type=int, help="Port of the remote DebuggerBootstrap instance.")
+    parser.add_argument("-s", "--server", type=str, help="Remote host of DebuggerBootstrap instance.")
+    parser.add_argument("-p", "--port", type=int, help="Port of the remote DebuggerBootstrap instance.")
+    parser.add_argument("--no-interactive", default=False, action="store_true", help="The user will not be prompted to enter missing data. When data is missing the program will exit with a failure status.")
     return parser
 
-if __name__ == "__main__":
-    parser = _make_argument_parser()
-    args = parser.parse_args()
+RECEIVE_BUFFER_SIZE=16
 
-    ClientConsole.init()
+def start_connection(host, port):
 
     selector = selectors.DefaultSelector()
 
     send_buffer = proto.make_subscribe_request_packet()
     send_buffer += proto.make_project_description_packet(json.dumps(MakeProjectDescription())) 
 
-    send_buffer += proto.make_force_start_debugger_packet()
+    # send_buffer += proto.make_force_start_debugger_packet()
+    # send_buffer += proto.make_force_stop_debugger_packet()
 
     receive_buffer = bytes()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.connect((args.HOST, args.PORT))
+            s.connect((host, port))
             connected = True
             s.setblocking(False)
             selector.register(s, selectors.EVENT_READ | selectors.EVENT_WRITE, data=None)
@@ -73,18 +74,78 @@ if __name__ == "__main__":
                         if not send_buffer:
                             selector.modify(s, selectors.EVENT_READ)
                     if mask &selectors.EVENT_READ:
-                        message = s.recv(16)
+                        message = s.recv(RECEIVE_BUFFER_SIZE)
                         if not message:
                             print("Connection to server is lost")
                             connected = False
                         receive_buffer += message
                         receive_buffer = _receiveServerData(receive_buffer)
-                print("and another")
         except OverflowError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)
         except ConnectionRefusedError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)
-        except KeyboardInterrupt:
-            print("User requested exit through Ctrl+C")
+
+def _get_default_if_missing(arg, args, default):
+    return getattr(args, arg, default)
+
+class MissingParameterException(Exception):
+    def __init__(self, parameter):
+        self.parameter = parameter
+
+def _get_or_report_if_missing(arg, args):
+    value = getattr(args, arg, None)
+    if value is None:
+        raise MissingParameterException(arg)
+    return value
+
+def _prompt_user_for_missing_parameter(parameter, args, validate):
+    value = getattr(args, parameter, None)
+    if value is not None:
+        return value
+    while True:
+        print("Please enter a value for parameter '{}': ".format(parameter), end="")
+        value = input()
+        if validate(value):
+            break
+        print("Value is invalid for '{0}': {1}".format(parameter, value), file=sys.stderr)
+    return value
+
+def _is_non_interactive(args):
+    return args.no_interactive 
+
+def _validate_is_number(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
+
+def gather_missing_input_data(args):
+    gathered_args = {}
+    if _is_non_interactive(args):
+        gathered_args["server"] = _get_default_if_missing("server", args, "localhost")
+        gathered_args["port"] = _get_or_report_if_missing("port", args)
+    else:
+        gathered_args["server"] = _prompt_user_for_missing_parameter("server", args, lambda _: True)
+        gathered_args["port"] = int(_prompt_user_for_missing_parameter("port", args, _validate_is_number))
+    return gathered_args
+    
+
+if __name__ == "__main__":
+    parser = _make_argument_parser()
+    args = parser.parse_args()
+
+    try:
+        gathered_args = gather_missing_input_data(args)
+    except MissingParameterException as e:
+        print("Missing value for '{}'".format(e.parameter))
+        exit(1)
+
+    ClientConsole.init()
+
+    try:
+       start_connection(gathered_args["server"], gathered_args["port"])
+    except KeyboardInterrupt:
+        print("User requested exit through Ctrl+C")

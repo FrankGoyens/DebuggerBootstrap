@@ -16,4 +16,4 @@ print("Starting program {}...".format(program))
 
 while True:
     time.sleep(1)
-    print("Program is running...", flush=True)
+    print("Program is running...", end="", flush=True)
