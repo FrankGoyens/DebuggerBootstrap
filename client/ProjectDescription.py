@@ -14,7 +14,7 @@ class ProjectDescriptionFileHasher(ABC):
 class ProjectDescriptionFileWalker(ABC):
     @abstractmethod
     def get_files_recursively_from_dir(self, predicate):
-        """Returns a list of tuples (in traversal order) of all files that satisfy the given predicate
+        """Returns a list of files (in traversal order) of all files that satisfy the given predicate
         
         predicate takes a file name as argument, and returns a bool. True means valid, False means invalid.
         """
@@ -25,15 +25,16 @@ class ProjectDescriptionFileWalker(ABC):
         pass
 
 class DefaultProjectDescriptionFileHasher(ProjectDescriptionFileHasher):
-    def calculate_hash_for_file(file_path):
+    def calculate_hash_for_file(self, file_path):
         return FileHasher.calculate_file_hash(file_path)
 
 class DefaultProjectDescriptionFileWalker(ProjectDescriptionFileWalker):
-    def get_files_recursively_from_dir(predicate):
+    def get_files_recursively_from_dir(self, predicate):
         files_matching_predicate = []
-        for _, _, file in os.walk("."):
-            if predicate(file):
-                files_matching_predicate.append(file)
+        for root, _, files in os.walk("."):
+            for file in files:
+                if predicate(file):
+                    files_matching_predicate.append(os.path.join(root, file))
         return files_matching_predicate
 
     def file_exists(self, file):
