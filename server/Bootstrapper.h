@@ -27,6 +27,8 @@ int IsProjectLoaded(const Bootstrapper*);
 int IsGDBServerUp(const Bootstrapper*);
 // Output argument must be initialized and will be owned by the caller
 void ReportMissingFiles(const Bootstrapper*, DynamicStringArray*);
+// Output argument must be initialized and will be owned by the caller
+void ReportExistingFiles(const Bootstrapper*, DynamicStringArray*);
 // Output arguments must be initialized and will be owned by the caller
 void ReportWantedVsActualHashes(const Bootstrapper*, DynamicStringArray* files, DynamicStringArray* actual_hashes,
                                 DynamicStringArray* wanted_hashes);

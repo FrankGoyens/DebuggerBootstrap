@@ -19,6 +19,7 @@
 #include "GDBServerStartStop.h"
 #include "ProjectDescription.h"
 #include "ProjectDescription_json.h"
+#include "ProjectFileDifferences.h"
 #include "SubscriberUpdate.h"
 #include "protocol/Protocol.h"
 
@@ -348,20 +349,10 @@ static void ValidateMissingFiles(Bootstrapper* bootstrapper) {
 }
 
 static void ValidateMismatchingHashes(Bootstrapper* bootstrapper) {
+    ProjectDescription* project_description = GetProjectDescription(bootstrapper);
 
-    DynamicStringArray files, actual_hashes, wanted_hashes;
-    DynamicStringArrayInit(&files);
-    DynamicStringArrayInit(&actual_hashes);
-    DynamicStringArrayInit(&wanted_hashes);
-    ReportWantedVsActualHashes(bootstrapper, &files, &actual_hashes, &wanted_hashes);
-
-    UpdateFileActualHashes(bootstrapper, &files);
-
-    // TODO broadcast matches mismatches
-
-    DynamicStringArrayDeinit(&files);
-    DynamicStringArrayDeinit(&actual_hashes);
-    DynamicStringArrayDeinit(&wanted_hashes);
+    UpdateFileActualHash(bootstrapper, project_description->executable_name);
+    UpdateFileActualHashes(bootstrapper, &project_description->link_dependencies_for_executable);
 }
 
 // Actually checks whether the PID is set, instead of relying on the bootstrapper's perspective
@@ -372,13 +363,15 @@ static int DebuggerProcessIsRunning(Bootstrapper* bootstrapper) {
     return bootstrapper_userdata->gdbserver_instance.pid != NO_PID;
 }
 
-static void ValidateMismatches(PollingHandles* all_handles, Bootstrapper* bootstrapper) {
+// Result should be freed
+static ProjectFileDifferences* ValidateMismatches(PollingHandles* all_handles, Bootstrapper* bootstrapper,
+                                                  DynamicStringArray* subscriber_broadcast) {
     const int debugger_is_running = DebuggerProcessIsRunning(bootstrapper);
 
     ValidateMissingFiles(bootstrapper);
     ValidateMismatchingHashes(bootstrapper);
 
-    if ((debugger_is_running != DebuggerProcessIsRunning(bootstrapper))) {
+    if (debugger_is_running != DebuggerProcessIsRunning(bootstrapper)) {
         AddDebuggerHandlesToPollingHandlesIfRunning(all_handles, bootstrapper);
         RemoveDebuggerHandlesFromPollingHandlesIfNotRunning(all_handles, bootstrapper);
     }
@@ -543,6 +536,7 @@ typedef struct {
     char client_message[CLIENT_MESSAGE_READ_BUFFER_SIZE]; // A buffer used for reading data from poll handles
     Bootstrapper bootstrapper;
     BoundBootstrapperParameters bound_bootstrapper_parameters;
+    ProjectFileDifferences last_broadcasted_project_differences;
 } ToplevelPolling;
 
 static void InitToplevelPolling(ToplevelPolling* toplevel_polling, int socket_desc,
@@ -555,6 +549,7 @@ static void InitToplevelPolling(ToplevelPolling* toplevel_polling, int socket_de
     GDBInstanceInit(&toplevel_polling->bound_bootstrapper_parameters.gdbserver_instance,
                     debugger_parameters->debugger_path, &debugger_parameters->debugger_args);
     BindBootstrapper(&toplevel_polling->bootstrapper, &toplevel_polling->bound_bootstrapper_parameters);
+    ProjectFileDifferencesInit(&toplevel_polling->last_broadcasted_project_differences, NULL);
 }
 
 static void DeinitToplevelPolling(ToplevelPolling* toplevel_polling) {
@@ -595,9 +590,6 @@ static int DoPollIn(ToplevelPolling* toplevel_polling, size_t fd_index) {
         }
         break;
     }
-
-    PutBroadcastMessagesInSubscriptionBuffers(all_handles, &toplevel_polling->subscriber_broadcast);
-    DynamicStringArrayClear(&toplevel_polling->subscriber_broadcast);
     return 0;
 }
 
@@ -665,6 +657,55 @@ static void PollIteration(int ready, ToplevelPolling* toplevel_polling, int* run
     }
 }
 
+// Result should be freed
+DynamicBuffer* CombineMessageForFileMismatch(const char* file, const char* wanted_hash, const char* actual_hash) {
+    DynamicBuffer* combined_message = (DynamicBuffer*)malloc(sizeof(DynamicBuffer));
+    DynamicBufferInit(combined_message);
+    static const char* file_tag = "file: \"";
+    static const char* wanted_hash_tag = "\" wanted hash: \"";
+    static const char* actual_hash_tag = "\" actual hash: \"";
+    DynamicBufferAppend(combined_message, file_tag, strlen(file_tag));
+    DynamicBufferAppend(combined_message, file, strlen(file));
+    DynamicBufferAppend(combined_message, wanted_hash_tag, strlen(wanted_hash_tag));
+    DynamicBufferAppend(combined_message, wanted_hash, strlen(wanted_hash));
+    DynamicBufferAppend(combined_message, actual_hash_tag, strlen(actual_hash_tag));
+    DynamicBufferAppend(combined_message, actual_hash, strlen(actual_hash));
+    DynamicBufferAppend(combined_message, "\"\0", 2);
+    return combined_message;
+}
+
+static void BroadcastProjectDifferences(const ProjectFileDifferences* project_differences,
+                                        DynamicStringArray* subscriber_broadcast) {
+
+    for (int i = 0; i < project_differences->existing.size; ++i) {
+        if (strcmp(project_differences->actual_hashes.data[i], project_differences->wanted_hashes.data[i]) == 0) {
+            AppendMessageToBroadcast(subscriber_broadcast, "MATCH", project_differences->existing.data[i]);
+        } else {
+            DynamicBuffer* combined_mismatch = CombineMessageForFileMismatch(
+                project_differences->existing.data[i], project_differences->actual_hashes.data[i],
+                project_differences->wanted_hashes.data[i]);
+            AppendMessageToBroadcast(subscriber_broadcast, "MISMATCH", combined_mismatch->data);
+            free(combined_mismatch);
+        }
+    }
+
+    for (int i = 0; i < project_differences->missing.size; ++i) {
+        AppendMessageToBroadcast(subscriber_broadcast, "MISSING", project_differences->missing.data[i]);
+    }
+}
+
+static void BroadcastProjectDifferencesIfOutOfDate(Bootstrapper* bootstrapper, DynamicStringArray* subscriber_broadcast,
+                                                   const ProjectFileDifferences* last_broadcasted_differences) {
+    ProjectFileDifferences* project_differences = (ProjectFileDifferences*)malloc(sizeof(ProjectFileDifferences));
+
+    ProjectFileDifferencesInit(project_differences, bootstrapper);
+
+    if (!ProjectFileDifferencesEqual(project_differences, last_broadcasted_differences))
+        BroadcastProjectDifferences(project_differences, subscriber_broadcast);
+
+    free(project_differences);
+}
+
 #define POLL_TIMEOUT_MS 1000
 
 static void StartRecievingData(int socket_desc, struct sockaddr_in* server, DebuggerParameters* debugger_parameters) {
@@ -683,7 +724,15 @@ static void StartRecievingData(int socket_desc, struct sockaddr_in* server, Debu
         int ready = poll(toplevel_polling.all_handles.pfds, toplevel_polling.all_handles.size, POLL_TIMEOUT_MS);
         PollIteration(ready, &toplevel_polling, &running);
 
-        ValidateMismatches(&toplevel_polling.all_handles, &toplevel_polling.bootstrapper);
+        ValidateMismatches(&toplevel_polling.all_handles, &toplevel_polling.bootstrapper,
+                           &toplevel_polling.subscriber_broadcast);
+
+        BroadcastProjectDifferencesIfOutOfDate(&toplevel_polling.bootstrapper, &toplevel_polling.subscriber_broadcast,
+                                               &toplevel_polling.last_broadcasted_project_differences);
+
+        PutBroadcastMessagesInSubscriptionBuffers(&toplevel_polling.all_handles,
+                                                  &toplevel_polling.subscriber_broadcast);
+        DynamicStringArrayClear(&toplevel_polling.subscriber_broadcast);
     }
     DeinitToplevelPolling(&toplevel_polling);
 }

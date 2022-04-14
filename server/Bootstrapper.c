@@ -178,6 +178,18 @@ void ReportMissingFiles(const Bootstrapper* bootstrapper, DynamicStringArray* mi
     DynamicStringArrayCopy(&internal->missing, missing_files);
 }
 
+void ReportExistingFiles(const Bootstrapper* bootstrapper, DynamicStringArray* existing_files) {
+    BootstrapperInternal* internal = (BootstrapperInternal*)bootstrapper->_internal;
+    if (!internal || !ProjectIsLoaded(internal))
+        return;
+
+    DynamicStringArrayClear(existing_files);
+    DynamicStringArrayAppend(existing_files, internal->projectDescription.executable_name);
+    for (int i = 0; i < internal->projectDescription.link_dependencies_for_executable.size; ++i) {
+        DynamicStringArrayAppend(existing_files, internal->projectDescription.link_dependencies_for_executable.data[i]);
+    }
+}
+
 static int FindFile(const char* file, const DynamicStringArray* files, size_t* position) {
     for (int i = 0; i < files->size; ++i) {
         if (strcmp(file, files->data[i]) == 0) {

@@ -134,11 +134,11 @@ if __name__ == "__main__":
         print("Given executable to debug: '{}' does not exist. Exiting...".format(args.executable_to_debug), file=sys.stderr)
         exit(1)
 
-        project_description = ProjectDescription.gather_recursively_from_current_dir(args.executable_to_debug)
+    project_description = ProjectDescription.gather_recursively_from_current_dir(args.executable_to_debug)
 
-        if project_description is None:
-            print("Unknown error gathering project description", file=sys.stderr)
-            exit(1)
+    if project_description is None:
+        print("Unknown error gathering project description", file=sys.stderr)
+        exit(1)
 
     try:
         gathered_args = _exit_when_remaining_arguments_cant_be_gathered(args)

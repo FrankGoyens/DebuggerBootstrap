@@ -14,6 +14,7 @@ set(DebuggerBootstrap_Headers
 	SubscriberUpdate.h
 	GDBServerStartStop.h
 	DynamicBuffer.h
+	ProjectFileDifferences.h
 
 	protocol/Protocol.h
 )
@@ -28,6 +29,7 @@ set(DebuggerBootstrap_Sources
 	SubscriberUpdate.c
 	GDBServerStartStop.c
 	DynamicBuffer.c
+	ProjectFileDifferences.c
 
 	protocol/Protocol.c
 )
@@ -36,11 +38,11 @@ set(DebuggerBootstrap_Sources
 add_library(DebuggerBootstrap_lib STATIC ${DebuggerBootstrap_Headers} ${DebuggerBootstrap_Sources})
 target_include_directories(DebuggerBootstrap_lib PUBLIC protocol)
 
+find_package(OpenSSL REQUIRED)
+target_link_libraries(DebuggerBootstrap_lib OpenSSL::Crypto)
+
 add_executable(DebuggerBootstrap main.c)
 target_link_libraries(DebuggerBootstrap DebuggerBootstrap_lib)
-
-find_package(OpenSSL REQUIRED)
-target_link_libraries(DebuggerBootstrap OpenSSL::Crypto)
 
 #Add the external json library
 include(ExternalProject)
