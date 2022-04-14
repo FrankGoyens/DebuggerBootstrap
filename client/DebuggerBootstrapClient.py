@@ -148,15 +148,15 @@ if __name__ == "__main__":
         print("Given executable to debug: '{}' does not exist. Exiting...".format(args.executable_to_debug), file=sys.stderr)
         exit(1)
 
-    project_description = ProjectDescription.gather_recursively_from_current_dir(args.executable_to_debug)
+        project_description = ProjectDescription.gather_recursively_from_current_dir(args.executable_to_debug)
 
-    if project_description is None:
-        print("Unknown error gathering project description", file=sys.stderr)
-        exit(1)
-
-    gathered_args = _exit_when_remaining_arguments_cant_be_gathered(args)
+        if project_description is None:
+            print("Unknown error gathering project description", file=sys.stderr)
+            exit(1)
 
     try:
-       start_connection(gathered_args["server"], gathered_args["port"], project_description)
+        gathered_args = _exit_when_remaining_arguments_cant_be_gathered(args)
+
+        start_connection(gathered_args["server"], gathered_args["port"], project_description)
     except KeyboardInterrupt:
         print("User requested exit through Ctrl+C")
