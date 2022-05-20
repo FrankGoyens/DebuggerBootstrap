@@ -1,37 +1,10 @@
 import protocol.native_protocol as proto
-from protocol.MessageDecoder import MessageDecoder
 import socket, json, argparse, selectors, sys, os
-import SubscriberUpdate
-import ClientConsoleColors, ClientConsole
+import CursesUI
 import ProjectDescription
-import __main__
 
-def print_subscriber_update(subscriber_update_json):
-    try:    
-        subscriber_update = SubscriberUpdate.from_json(subscriber_update_json)
-        color_for_print = ClientConsoleColors.get_color_for_tag(subscriber_update.tag)
-        ClientConsole.set_color(color_for_print)
-        print(subscriber_update.message)
-        ClientConsole.reset_color()
-    except SubscriberUpdate.SubscriberUpdateException:
-        pass
-
-class ClientSideMessageDecoder(MessageDecoder):
-    def __init__(self, data):
-        self.data = data
-
-    def receive_subscription_response(self, packet_length, message_json):
-        print_subscriber_update(message_json)
-        self.data = self.data[packet_length:]
-
-    def receive_incomplete_response(self, _):
-        pass
-
-    def receive_unknown_response(self, _):
-        self.data = bytes()
-
-def _receiveServerData(data):
-    decoder = ClientSideMessageDecoder(data)
+def _receiveServerData(data, decoder_creator):
+    decoder = decoder_creator(data)
     proto.decode_packet(data, decoder)
     return decoder.data
 
@@ -46,7 +19,7 @@ def _make_argument_parser():
 
 RECEIVE_BUFFER_SIZE=16
 
-def start_connection(host, port, project_description):
+def start_connection(host, port, project_description, decoder_creator):
 
     selector = selectors.DefaultSelector()
 
@@ -78,7 +51,7 @@ def start_connection(host, port, project_description):
                             print("Connection to server is lost")
                             connected = False
                         receive_buffer += message
-                        receive_buffer = _receiveServerData(receive_buffer)
+                        receive_buffer = _receiveServerData(receive_buffer, decoder_creator)
         except OverflowError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)
@@ -142,7 +115,7 @@ def _exit_when_remaining_arguments_cant_be_gathered(args):
 if __name__ == "__main__":
     parser = _make_argument_parser()
     args = parser.parse_args()
-    ClientConsole.init()
+    # ClientConsole.init()
 
     if not os.path.isfile(args.executable_to_debug):
         print("Given executable to debug: '{}' does not exist. Exiting...".format(args.executable_to_debug), file=sys.stderr)
@@ -157,6 +130,6 @@ if __name__ == "__main__":
     try:
         gathered_args = _exit_when_remaining_arguments_cant_be_gathered(args)
 
-        start_connection(gathered_args["server"], gathered_args["port"], project_description)
+        CursesUI.start(lambda decoder_creator: start_connection(gathered_args["server"], gathered_args["port"], project_description, decoder_creator))
     except KeyboardInterrupt:
         print("User requested exit through Ctrl+C")
