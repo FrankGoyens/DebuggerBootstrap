@@ -17,11 +17,20 @@ def _make_argument_parser():
     parser.add_argument("--no-interactive", default=False, action="store_true", help="The user will not be prompted to enter missing data. When data is missing the program will exit with a failure status.")
     return parser
 
+def _get_ui_descriptor_fileno(ui_input_fd):
+    if isinstance(ui_input_fd, int):
+        return ui_input_fd
+    if hasattr(ui_input_fd, "fileno"):
+        return ui_input_fd.fileno()
+    return int(ui_input_fd)
+
 RECEIVE_BUFFER_SIZE=16
 
-def start_connection(host, port, project_description, decoder_creator):
+def start_connection(host, port, project_description, decoder_creator, ui_descriptor):
 
     selector = selectors.DefaultSelector()
+
+    selector.register(ui_descriptor.get_ui_input_fd(), selectors.EVENT_READ, data=None)
 
     send_buffer = proto.make_subscribe_request_packet()
     send_buffer += proto.make_project_description_packet(json.dumps(project_description)) 
@@ -40,18 +49,22 @@ def start_connection(host, port, project_description, decoder_creator):
             while connected:
                 events = selector.select(timeout=1)
                 for key, mask in events:
-                    if mask & selectors.EVENT_WRITE:
-                        sent_bytes = s.send(send_buffer)
-                        send_buffer = send_buffer[sent_bytes:]
-                        if not send_buffer:
-                            selector.modify(s, selectors.EVENT_READ)
-                    if mask &selectors.EVENT_READ:
-                        message = s.recv(RECEIVE_BUFFER_SIZE)
-                        if not message:
-                            print("Connection to server is lost")
-                            connected = False
-                        receive_buffer += message
-                        receive_buffer = _receiveServerData(receive_buffer, decoder_creator)
+                    if key.fd == s.fileno():
+                        if mask & selectors.EVENT_WRITE:
+                            sent_bytes = s.send(send_buffer)
+                            send_buffer = send_buffer[sent_bytes:]
+                            if not send_buffer:
+                                selector.modify(s, selectors.EVENT_READ)
+                        if mask &selectors.EVENT_READ:
+                            message = s.recv(RECEIVE_BUFFER_SIZE)
+                            if not message:
+                                print("Connection to server is lost")
+                                connected = False
+                            receive_buffer += message
+                            receive_buffer = _receiveServerData(receive_buffer, decoder_creator)
+                    if key.fd == _get_ui_descriptor_fileno(ui_descriptor.get_ui_input_fd()):
+                        if mask & selectors.EVENT_READ:
+                            ui_descriptor.ui_read_poll_iteration()
         except OverflowError as e:
             print("Error connecting to server: {}".format(e))
             exit(1)
@@ -130,6 +143,6 @@ if __name__ == "__main__":
     try:
         gathered_args = _exit_when_remaining_arguments_cant_be_gathered(args)
 
-        CursesUI.start(lambda decoder_creator: start_connection(gathered_args["server"], gathered_args["port"], project_description, decoder_creator))
+        CursesUI.start(lambda decoder_creator, ui_descriptor: start_connection(gathered_args["server"], gathered_args["port"], project_description, decoder_creator, ui_descriptor))
     except KeyboardInterrupt:
         print("User requested exit through Ctrl+C")
